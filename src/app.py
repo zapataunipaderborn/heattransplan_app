@@ -249,55 +249,62 @@ with left:
                 st.session_state['proc_groups'] = new_groups
 
             for g, g_list in enumerate(st.session_state['proc_groups']):
-                gh_cols = st.columns([0.55, 0.25, 0.20])
-                with gh_cols[0]:
-                    default_name = st.session_state['proc_group_names'][g]
-                    new_name = st.text_input("Group name", value=default_name, key=f"group_name_{g}", label_visibility="collapsed", placeholder=f"Group {g+1}")
-                    st.session_state['proc_group_names'][g] = new_name.strip() or default_name
-                    g_toggle_label = "▾" if st.session_state['proc_group_expanded'][g] else "▸"
-                    if st.button(g_toggle_label, key=f"group_toggle_{g}"):
-                        st.session_state['proc_group_expanded'][g] = not st.session_state['proc_group_expanded'][g]
-                        st.rerun()
-                with gh_cols[1]:
-                    if st.button("Add process", key=f"add_proc_group_{g}"):
-                        add_process(st.session_state)
-                        new_idx = len(st.session_state['processes']) - 1
-                        g_list.append(new_idx)
-                        st.session_state['proc_expanded'].append(True)
-                        st.session_state['ui_status_msg'] = f"Added process to {st.session_state['proc_group_names'][g]}"
-                        st.rerun()
-                with gh_cols[2]:
-                    st.markdown(f"**{len(g_list)}**")
+                # Arrow (toggle) | Name (narrow) | Add process | Count
+                gh_cols = st.columns([0.06, 0.44, 0.25, 0.15])
+                g_toggle_label = "▾" if st.session_state['proc_group_expanded'][g] else "▸"
+                if gh_cols[0].button(g_toggle_label, key=f"group_toggle_{g}"):
+                    st.session_state['proc_group_expanded'][g] = not st.session_state['proc_group_expanded'][g]
+                    st.rerun()
+                default_name = st.session_state['proc_group_names'][g]
+                new_name = gh_cols[1].text_input("Group name", value=default_name, key=f"group_name_{g}", label_visibility="collapsed", placeholder=f"Group {g+1}")
+                st.session_state['proc_group_names'][g] = new_name.strip() or default_name
+                if gh_cols[2].button("Add process", key=f"add_proc_group_{g}"):
+                    add_process(st.session_state)
+                    new_idx = len(st.session_state['processes']) - 1
+                    g_list.append(new_idx)
+                    st.session_state['proc_expanded'].append(True)
+                    st.session_state['ui_status_msg'] = f"Added process to {st.session_state['proc_group_names'][g]}"
+                    st.rerun()
+                gh_cols[3].markdown(f"**{len(g_list)}**")
 
                 if not st.session_state['proc_group_expanded'][g]:
                     continue
 
                 if not g_list:
                     st.caption("(No processes in this group)")
-                for i in g_list:
+                for local_idx, i in enumerate(g_list):
                     p = st.session_state['processes'][i]
-                    # Per-process header
-                    header_cols = st.columns([0.08, 0.04, 0.75, 0.32, 0.16])
+                    # Per-process header (arrow | name | place | delete)
+                    header_cols = st.columns([0.06, 0.60, 0.22, 0.12])
                     toggle_label = "▾" if st.session_state['proc_expanded'][i] else "▸"
                     if header_cols[0].button(toggle_label, key=f"proc_toggle_{i}"):
                         st.session_state['proc_expanded'][i] = not st.session_state['proc_expanded'][i]
                         st.rerun()
-                    p['name'] = header_cols[2].text_input(f"{i+1}. Name", value=p.get('name',''), key=f"p_name_{i}")
+                    # Default auto-name if empty
+                    if not p.get('name'):
+                        p['name'] = f"Process {i+1}"
+                    p['name'] = header_cols[1].text_input(
+                        "Process name",
+                        value=p.get('name',''),
+                        key=f"p_name_{i}",
+                        label_visibility="collapsed",
+                        placeholder=f"Process {i+1}"
+                    )
                     place_active = (st.session_state['placement_mode'] and st.session_state.get('placing_process_idx') == i)
                     if not place_active:
-                        if header_cols[3].button("Place", key=f"place_{i}"):
+                        if header_cols[2].button("Place", key=f"place_{i}"):
                             st.session_state['placement_mode'] = True
                             st.session_state['measure_mode'] = False
                             st.session_state['placing_process_idx'] = i
                             st.rerun()
                     else:
-                        if header_cols[3].button("Done", key=f"done_place_{i}"):
+                        if header_cols[2].button("Done", key=f"done_place_{i}"):
                             st.session_state['placement_mode'] = False
                             st.session_state['placing_process_idx'] = None
                             st.rerun()
                     pending = st.session_state.get('proc_delete_pending')
                     if pending == i:
-                        with header_cols[4]:
+                        with header_cols[3]:
                             st.write("Sure?")
                             if st.button("✅", key=f"confirm_del_{i}"):
                                 delete_process(st.session_state, i)
@@ -307,7 +314,7 @@ with left:
                             if st.button("❌", key=f"cancel_del_{i}"):
                                 st.session_state['proc_delete_pending'] = None
                     else:
-                        if header_cols[4].button("❌", key=f"del_proc_{i}"):
+                        if header_cols[3].button("❌", key=f"del_proc_{i}"):
                             st.session_state['proc_delete_pending'] = i
                             st.rerun()
 
@@ -357,6 +364,9 @@ with left:
                                 if st.button("Add", key=f"btn_add_first_stream_{i}"):
                                     add_stream_to_process(st.session_state, i)
                                     st.rerun()
+                    # Separator (white horizontal line) between processes inside a group
+                    if local_idx < len(g_list) - 1:
+                        st.markdown("<div style='height:1px; background:#ffffff; margin:4px 0;'></div>", unsafe_allow_html=True)
         else:
             st.info("No groups yet. Use 'Add group of processes' to start.")
     else:
