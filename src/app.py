@@ -206,7 +206,7 @@ with left:
                         delete_process(st.session_state, i)
                         st.rerun()
                     # Row for coordinates + placement buttons
-                    r2c1,r2c2,r2c3,r2c4,r2c5 = st.columns([1,1,1,1,1])
+                    r2c1,r2c2,r2c3,r2c4 = st.columns([1,1,1,2])
                     p['lat'] = r2c1.text_input("Lat", value=str(p.get('lat') or ''), key=f"p_lat_{i}")
                     p['lon'] = r2c2.text_input("Lon", value=str(p.get('lon') or ''), key=f"p_lon_{i}")
                     place_active = st.session_state['placement_mode'] and st.session_state.get('placing_process_idx') == i
@@ -222,7 +222,6 @@ with left:
                             st.session_state['placing_process_idx'] = None
                     # 'Next' (renamed) now after Place button
                     p['next'] = r2c4.text_input("Next processes", value=p.get('next',''), key=f"p_next_{i}")
-                    r2c5.caption("Click snapshot to set")
                     # Streams
                     st.markdown("**Streams**")
                     streams = p.get('streams', [])
