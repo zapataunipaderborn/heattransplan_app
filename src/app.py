@@ -120,11 +120,16 @@ st.title("Process Analysis App (Streamlit)")
 MAP_WIDTH = 1300  # increased for wider map & snapshot
 MAP_HEIGHT = 720  # taller snapshot for better visibility
 
+# Default start location (Universität Paderborn, Warburger Str. 100, 33098 Paderborn)
+DEFAULT_START_ADDRESS = "Universität Paderborn, Warburger Str. 100, 33098 Paderborn"
+# Approximate coordinates (lat, lon)
+DEFAULT_START_COORDS = [51.70814085564164, 8.772155163087213]
+
 # Session state for map lock and snapshot
 if 'map_locked' not in st.session_state: st.session_state['map_locked'] = False
 if 'map_snapshot' not in st.session_state: st.session_state['map_snapshot'] = None
-if 'map_center' not in st.session_state: st.session_state['map_center'] = [56, 10]  # committed (locked) center
-if 'map_zoom' not in st.session_state: st.session_state['map_zoom'] = 16            # committed (locked) zoom
+if 'map_center' not in st.session_state: st.session_state['map_center'] = DEFAULT_START_COORDS[:]  # committed (locked) center for start address
+if 'map_zoom' not in st.session_state: st.session_state['map_zoom'] = 17.5          # committed (locked) zoom
 if 'selector_center' not in st.session_state: st.session_state['selector_center'] = st.session_state['map_center'][:]
 if 'selector_zoom' not in st.session_state: st.session_state['selector_zoom'] = st.session_state['map_zoom']
 # Track mode separately (avoid writing to widget key after creation)
