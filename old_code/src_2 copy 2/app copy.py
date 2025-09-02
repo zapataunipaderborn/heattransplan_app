@@ -207,7 +207,7 @@ with right:
                         buf = BytesIO()
                         image.save(buf, format='PNG')
                         st.session_state['map_snapshot'] = buf.getvalue()
-                        st.experimental_rerun()
+                        st.rerun()
                     except RuntimeError as regen_err:
                         st.session_state['map_snapshot'] = None
                         st.session_state['map_error'] = str(regen_err)

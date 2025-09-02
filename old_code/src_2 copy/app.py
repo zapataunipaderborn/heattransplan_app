@@ -7,6 +7,13 @@ from PIL import Image
 from staticmap import StaticMap, CircleMarker
 from streamlit_image_coordinates import streamlit_image_coordinates
 from math import radians, cos, sin, sqrt, atan2
+from process_utils import (
+    init_process_state,
+    add_process,
+    delete_process,
+    add_stream_to_process,
+    delete_stream_from_process,
+)
 
 st.set_page_config(page_title="Process Analysis", layout="wide")
 
@@ -24,7 +31,7 @@ div[data-testid="column"] > div:has(> div.map-region) {margin-top:0;}
 
 st.title("Process Analysis App (Streamlit)")
 
-MAP_WIDTH = 900
+MAP_WIDTH = 950
 MAP_HEIGHT = 600
 
 # Session state for map lock and snapshot
@@ -38,15 +45,114 @@ if 'selector_zoom' not in st.session_state: st.session_state['selector_zoom'] = 
 if 'ui_mode_radio' not in st.session_state: st.session_state['ui_mode_radio'] = 'Select Map'
 if 'measure_mode' not in st.session_state: st.session_state['measure_mode'] = False
 if 'measure_points' not in st.session_state: st.session_state['measure_points'] = []
+init_process_state(st.session_state)
+if 'placing_process_idx' not in st.session_state: st.session_state['placing_process_idx'] = None
 
-left, right = st.columns([0.6, 3.0], gap="large")
+left, right = st.columns([1.2, 4.0], gap="large")
 
 with left:
-    st.header("Workspace")
-    st.write("(Future: process controls, diagrams, uploads, etc.)")
+    st.header("Processes & Streams")
+    # Mode selector moved to left so right column can focus on large map/snapshot
+    mode = st.radio("Mode", ["Select Map", "Analyze"], key="ui_mode_radio", horizontal=False, index=0 if not st.session_state['map_locked'] else 1)
+    # Process & Stream UI (only show in Analyze mode to mimic original workflow)
+    if mode == "Analyze":
+        st.subheader("Add / Edit Processes")
+        proc_cols = st.columns([2,1,1,1,1,1])
+        with proc_cols[0]:
+            new_name = st.text_input("Process Name", key="proc_new_name")
+        with proc_cols[1]:
+            new_next = st.text_input("Next", key="proc_new_next")
+        with proc_cols[2]:
+            new_conntemp = st.text_input("Conn Temp", key="proc_new_conntemp")
+        with proc_cols[3]:
+            new_connm = st.text_input("Conn m", key="proc_new_connm")
+        with proc_cols[4]:
+            new_conncp = st.text_input("Conn cp", key="proc_new_conncp")
+        with proc_cols[5]:
+            add_p_clicked = st.button("Add", key="btn_add_process")
+        if add_p_clicked:
+            add_process(st.session_state)
+            p = st.session_state['processes'][-1]
+            p.update({
+                'name': new_name,
+                'next': new_next,
+                'conntemp': new_conntemp,
+                'connm': new_connm,
+                'conncp': new_conncp,
+            })
+            st.success(f"Added process '{new_name or '(unnamed)'}'")
+        if st.session_state['processes']:
+            for i, p in enumerate(st.session_state['processes']):
+                exp_label = f"{i+1}. {p.get('name') or '(unnamed)'}"
+                with st.expander(exp_label, expanded=False):
+                    c1,c2,c3,c4,c5,c6 = st.columns([2,1,1,1,1,1])
+                    p['name'] = c1.text_input("Name", value=p.get('name',''), key=f"p_name_{i}")
+                    p['next'] = c2.text_input("Next", value=p.get('next',''), key=f"p_next_{i}")
+                    p['conntemp'] = c3.text_input("Conn Temp", value=p.get('conntemp',''), key=f"p_conntemp_{i}")
+                    p['connm'] = c4.text_input("Conn m", value=p.get('connm',''), key=f"p_connm_{i}")
+                    p['conncp'] = c5.text_input("Conn cp", value=p.get('conncp',''), key=f"p_conncp_{i}")
+                    del_col = c6.container()
+                    ll1,ll2,ll3 = st.columns([1,1,2])
+                    p['lat'] = ll1.text_input("Lat", value=str(p.get('lat') or ''), key=f"p_lat_{i}")
+                    p['lon'] = ll2.text_input("Lon", value=str(p.get('lon') or ''), key=f"p_lon_{i}")
+                    ll3.caption("Coords appear as markers in Select Map mode.")
+                    if del_col.button("Delete", key=f"del_proc_{i}"):
+                        delete_process(st.session_state, i)
+                        st.rerun()
+                    st.markdown("**Streams**")
+                    streams = p.get('streams', [])
+                    if streams:
+                        for si, s in enumerate(streams):
+                            sc1,sc2,sc3,sc4,sc5 = st.columns([1,1,1,1,1])
+                            s['mdot'] = sc1.text_input("ṁ", value=str(s.get('mdot','')), key=f"s_mdot_{i}_{si}")
+                            s['temp_in'] = sc2.text_input("Tin", value=str(s.get('temp_in','')), key=f"s_tin_{i}_{si}")
+                            s['temp_out'] = sc3.text_input("Tout", value=str(s.get('temp_out','')), key=f"s_tout_{i}_{si}")
+                            s['cp'] = sc4.text_input("cp", value=str(s.get('cp','')), key=f"s_cp_{i}_{si}")
+                            if sc5.button("✕", key=f"del_stream_{i}_{si}"):
+                                delete_stream_from_process(st.session_state, i, si)
+                                st.rerun()
+                    else:
+                        st.caption("No streams yet.")
+                    as1,as2,as3,as4,as5 = st.columns([1,1,1,1,1])
+                    new_mdot = as1.text_input("ṁ", key=f"new_mdot_{i}")
+                    new_tin = as2.text_input("Tin", key=f"new_tin_{i}")
+                    new_tout = as3.text_input("Tout", key=f"new_tout_{i}")
+                    new_cp = as4.text_input("cp", key=f"new_cp_{i}")
+                    if as5.button("Add", key=f"btn_add_stream_{i}"):
+                        add_stream_to_process(st.session_state, i)
+                        st.session_state['processes'][i]['streams'][-1].update({
+                            'mdot': new_mdot,
+                            'temp_in': new_tin,
+                            'temp_out': new_tout,
+                            'cp': new_cp,
+                        })
+                        st.rerun()
+        else:
+            st.info("No processes yet in this session.")
+    else:
+        # Provide a summary of existing processes while selecting map
+        if st.session_state['processes']:
+            st.caption(f"Processes: {len(st.session_state['processes'])} (edit in Analyze mode)")
+        else:
+            st.caption("Add processes in Analyze mode after locking a map view.")
+        # Process placement helper (allow assigning coordinates by clicking map)
+        if st.session_state['processes']:
+            with st.expander("Place / Move Process on Map", expanded=False):
+                proc_names = [f"{i+1}. {p.get('name') or '(unnamed)'}" for i,p in enumerate(st.session_state['processes'])]
+                sel = st.selectbox("Select Process", proc_names, key="placing_selector")
+                idx = proc_names.index(sel) if sel in proc_names else None
+                colp1,colp2,colp3 = st.columns([1,1,2])
+                if colp1.button("Enable Move", key="enable_move"):
+                    st.session_state['placing_process_idx'] = idx
+                if colp2.button("Done", key="done_move"):
+                    st.session_state['placing_process_idx'] = None
+                if st.session_state['placing_process_idx'] is not None:
+                    st.info("Click on the map to set new coordinates for the selected process.")
+                cur = st.session_state['processes'][idx]
+                st.caption(f"Current coords: {cur.get('lat')} , {cur.get('lon')}")
 
 with right:
-    mode = st.radio("Mode", ["Select Map", "Analyze"], key="ui_mode_radio", horizontal=True, index=0 if not st.session_state['map_locked'] else 1)
+    # mode already selected on left
     if mode == "Select Map":
         # Address search & lock row
         sel_c1, sel_c2, sel_c3 = st.columns([3,2,2])
@@ -100,7 +206,44 @@ with right:
 
         # Folium interactive map (center tracked but snapshot only on explicit lock)
         fmap = folium.Map(location=st.session_state['selector_center'], zoom_start=st.session_state['selector_zoom'])
-        fmap_data = st_folium(fmap, key="selector_map", width=MAP_WIDTH, height=MAP_HEIGHT, returned_objects=["center","zoom"], use_container_width=False)
+        # Overlay processes as styled DivIcon 'boxes'
+        for idx, p in enumerate(st.session_state['processes']):
+            lat = p.get('lat'); lon = p.get('lon')
+            if lat not in (None, "") and lon not in (None, ""):
+                try:
+                    label = p.get('name') or f"P{idx+1}"
+                    html = f"""<div style='background:rgba(255,255,255,0.85);border:1px solid #333;padding:2px 6px;font-size:12px;border-radius:4px;white-space:nowrap;'>📦 {label}</div>"""
+                    folium.Marker(
+                        [float(lat), float(lon)],
+                        tooltip=label,
+                        popup=f"<b>{label}</b><br>Next: {p.get('next','')}",
+                        icon=folium.DivIcon(html=html)
+                    ).add_to(fmap)
+                except (ValueError, TypeError):
+                    pass
+        fmap_data = st_folium(
+            fmap,
+            key="selector_map",
+            width=MAP_WIDTH,
+            height=MAP_HEIGHT,
+            returned_objects=["center","zoom","last_clicked"],
+            use_container_width=False
+        )
+        # Update placement if in placing mode and user clicked
+        if (
+            st.session_state.get('placing_process_idx') is not None and
+            fmap_data and fmap_data.get('last_clicked')
+        ):
+            click = fmap_data['last_clicked']
+            lat = click.get('lat'); lon = click.get('lng')
+            if lat is not None and lon is not None:
+                try:
+                    pidx = st.session_state['placing_process_idx']
+                    st.session_state['processes'][pidx]['lat'] = round(float(lat), 6)
+                    st.session_state['processes'][pidx]['lon'] = round(float(lon), 6)
+                except (ValueError, TypeError):
+                    pass
+                # keep placing mode active until user clicks Done
         if fmap_data and 'center' in fmap_data and 'zoom' in fmap_data:
             c = fmap_data['center']
             if isinstance(c, dict):
@@ -116,6 +259,7 @@ with right:
         if not st.session_state['map_locked']:
             st.warning("No locked snapshot yet. Switch to 'Select Map' and capture one.")
         else:
+            # In Analyze mode on right column proceed with snapshot tools below
             top_c1, top_c2, top_c3 = st.columns([3,2,2])
             with top_c1:
                 st.info("Snapshot locked")

@@ -1,5 +1,4 @@
 import pandas as pd
-import base64
 import io
 from typing import List, Dict, Tuple, Optional
 
@@ -46,7 +45,7 @@ def parse_process_csv_file(uploaded_file) -> Tuple[Optional[list], str]:
                     "cp": row.get('cp',''),
                 })
         return procs, f"Loaded {len(procs)} processes"
-    except Exception as e:
+    except (UnicodeDecodeError, OSError, ValueError) as e:
         return None, f"Failed: {e}"
 
 def processes_to_csv_bytes(processes: List[Dict]) -> bytes:
