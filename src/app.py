@@ -386,44 +386,25 @@ with left:
                             # Store as comma-separated names
                             p['next'] = ", ".join(selected)
 
-                        st.markdown("**Streams**")
+                        # Streams section with persistent add button
                         streams = p.get('streams', [])
-                        if streams:
-                            for si, s in enumerate(streams):
-                                lbl_col, sc1,sc2,sc3,sc4,sc5 = st.columns([0.5,1,1,1,1,0.6])
-                                # Static stream label (non-editable)
-                                lbl_col.markdown(f"**S{si+1}**")
-                                s['temp_in'] = sc1.text_input("Tin", value=str(s.get('temp_in','')), key=f"s_tin_{i}_{si}")
-                                s['temp_out'] = sc2.text_input("Tout", value=str(s.get('temp_out','')), key=f"s_tout_{i}_{si}")
-                                s['mdot'] = sc3.text_input("ṁ", value=str(s.get('mdot','')), key=f"s_mdot_{i}_{si}")
-                                s['cp'] = sc4.text_input("cp", value=str(s.get('cp','')), key=f"s_cp_{i}_{si}")
-                                if sc5.button("✕", key=f"del_stream_{i}_{si}"):
-                                    delete_stream_from_process(st.session_state, i, si)
-                                    st.rerun()
-                            next_label_col, as1,as2,as3,as4,as5 = st.columns([0.5,1,1,1,1,0.6])
-                            next_label_col.markdown(f"**S{len(streams)+1}**")
-                            new_tin = as1.text_input("Tin", key=f"new_tin_{i}")
-                            new_tout = as2.text_input("Tout", key=f"new_tout_{i}")
-                            new_mdot = as3.text_input("ṁ", key=f"new_mdot_{i}")
-                            new_cp = as4.text_input("cp", key=f"new_cp_{i}")
-                            if as5.button("Add", key=f"btn_add_stream_{i}"):
-                                add_stream_to_process(st.session_state, i)
-                                st.session_state['processes'][i]['streams'][-1].update({
-                                    'temp_in': new_tin,
-                                    'temp_out': new_tout,
-                                    'mdot': new_mdot,
-                                    'cp': new_cp,
-                                })
+                        header_c1, header_c2, header_c3 = st.columns([2,4,1])
+                        header_c1.markdown("**Streams**")
+                        if header_c3.button("➕", key=f"btn_add_stream_header_{i}"):
+                            add_stream_to_process(st.session_state, i)
+                            st.rerun()
+                        if not streams:
+                            st.caption("No streams yet. Use ➕ to add one.")
+                        for si, s in enumerate(streams):
+                            lbl_col, sc1,sc2,sc3,sc4,sc5 = st.columns([0.5,1,1,1,1,0.6])
+                            lbl_col.markdown(f"**S{si+1}**")
+                            s['temp_in'] = sc1.text_input("Tin", value=str(s.get('temp_in','')), key=f"s_tin_{i}_{si}")
+                            s['temp_out'] = sc2.text_input("Tout", value=str(s.get('temp_out','')), key=f"s_tout_{i}_{si}")
+                            s['mdot'] = sc3.text_input("ṁ", value=str(s.get('mdot','')), key=f"s_mdot_{i}_{si}")
+                            s['cp'] = sc4.text_input("cp", value=str(s.get('cp','')), key=f"s_cp_{i}_{si}")
+                            if sc5.button("✕", key=f"del_stream_{i}_{si}"):
+                                delete_stream_from_process(st.session_state, i, si)
                                 st.rerun()
-                        else:
-                            nc_label, nc1, nc2 = st.columns([0.5,3.5,1])
-                            nc_label.markdown("**S1**")
-                            with nc1:
-                                st.caption("No streams yet.")
-                            with nc2:
-                                if st.button("Add", key=f"btn_add_first_stream_{i}"):
-                                    add_stream_to_process(st.session_state, i)
-                                    st.rerun()
                     if local_idx < len(g_list) - 1:
                         st.markdown("<div style='height:1px; background:#888888; opacity:0.5; margin:4px 0;'></div>", unsafe_allow_html=True)
                 # Bottom separator after expanded group
