@@ -1,0 +1,4 @@
+name,next,conntemp,connm,conncp,stream_no,mdot,temp_in,temp_out,cp
+p1,p2,,,,S1,300,50,30,4
+p2,p3,,,,S1,400,100,90,4
+p3,,,,,S1,200,20,35,3
