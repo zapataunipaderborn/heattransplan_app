@@ -300,28 +300,24 @@ with right:
     # mode already selected on left
     if mode == "Select Map":
         # Address search row (locking handled by top button now)
-        sel_c1, sel_c2 = st.columns([4,2])
-        with sel_c1:
-            with st.form(key="search_form", clear_on_submit=False):
-                address = st.text_input("Search address", key="address_input")
-                submit_search = st.form_submit_button("Search")
-            if submit_search and address:
-                url = f"https://nominatim.openstreetmap.org/search?q={address}&format=json&limit=1"
-                try:
-                    resp = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
-                    resp.raise_for_status()
-                    data = resp.json()
-                    if data:
-                        st.session_state['selector_center'] = [float(data[0]['lat']), float(data[0]['lon'])]
-                        st.session_state['selector_zoom'] = 16
-                    else:
-                        st.warning("Address not found.")
-                except requests.exceptions.Timeout:
-                    st.error("Address search timed out.")
-                except requests.exceptions.RequestException as req_err:
-                    st.error(f"Search failed: {req_err}")
-        with sel_c2:
-            st.caption("When ready, press 'Lock map and analyze'.")
+        addr_col, btn_col, info_col = st.columns([5,1,2])
+        address = addr_col.text_input("Search address", key="address_input")
+        if btn_col.button("Search", key="search_button") and address:
+            url = f"https://nominatim.openstreetmap.org/search?q={address}&format=json&limit=1"
+            try:
+                resp = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
+                resp.raise_for_status()
+                data = resp.json()
+                if data:
+                    st.session_state['selector_center'] = [float(data[0]['lat']), float(data[0]['lon'])]
+                    st.session_state['selector_zoom'] = 16
+                else:
+                    st.warning("Address not found.")
+            except requests.exceptions.Timeout:
+                st.error("Address search timed out.")
+            except requests.exceptions.RequestException as req_err:
+                st.error(f"Search failed: {req_err}")
+        info_col.caption("When ready, press 'Lock map and analyze'.")
 
         # Folium interactive map (center tracked but snapshot only on explicit lock)
         fmap = folium.Map(location=st.session_state['selector_center'], zoom_start=st.session_state['selector_zoom'])
