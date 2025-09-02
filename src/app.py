@@ -364,7 +364,27 @@ with left:
                         r2c1,r2c2,r2c3 = st.columns([1,1,3])
                         p['lat'] = r2c1.text_input("Latitude", value=str(p.get('lat') or ''), key=f"p_lat_{i}")
                         p['lon'] = r2c2.text_input("Longitude", value=str(p.get('lon') or ''), key=f"p_lon_{i}")
-                        p['next'] = r2c3.text_input("Next processes", value=p.get('next',''), key=f"p_next_{i}")
+                        # Multi-select for next processes (exclude self)
+                        all_procs = st.session_state['processes']
+                        if len(all_procs) <= 1:
+                            with r2c3:
+                                st.caption("To connect processes, add more than one")
+                                p['next'] = ''
+                        else:
+                            # Build option list of other process names
+                            options = []
+                            for j, pj in enumerate(all_procs):
+                                if j == i:
+                                    continue
+                                nm = pj.get('name') or f"Process {j+1}"
+                                options.append(nm)
+                            # Current selections parsed from stored string
+                            current_tokens = [t.strip() for t in (p.get('next','') or '').replace(';',',').replace('|',',').split(',') if t.strip()]
+                            # Keep only those present in options
+                            preselect = [t for t in current_tokens if t in options]
+                            selected = r2c3.multiselect("Next processes", options=options, default=preselect, key=f"p_next_multi_{i}")
+                            # Store as comma-separated names
+                            p['next'] = ", ".join(selected)
 
                         st.markdown("**Streams**")
                         streams = p.get('streams', [])
