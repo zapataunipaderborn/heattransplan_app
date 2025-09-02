@@ -230,10 +230,10 @@ with left:
                             delete_process(st.session_state, i)
                             st.session_state['proc_delete_pending'] = None
                             st.rerun()
-                        if st.button("✖", key=f"cancel_del_{i}"):
+                        if st.button("❌", key=f"cancel_del_{i}"):
                             st.session_state['proc_delete_pending'] = None
                 else:
-                    if header_cols[4].button("✕", key=f"del_proc_{i}"):
+                    if header_cols[4].button("❌", key=f"del_proc_{i}"):
                         st.session_state['proc_delete_pending'] = i
                         st.rerun()
 
