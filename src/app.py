@@ -191,18 +191,17 @@ with left:
     if mode == "Analyze":
         if st.session_state['processes']:
             for i, p in enumerate(st.session_state['processes']):
-                exp_label = f"{i+1}. {p.get('name') or '(unnamed)'}"
+                # Name input outside expander for better visibility / inline editing
+                p['name'] = st.text_input(f"{i+1}. Name", value=p.get('name',''), key=f"p_name_{i}")
+                exp_label = f"{i+1}. Details"
                 with st.expander(exp_label, expanded=False):
-                    # Row for main attributes
-                    # First row: core product parameters (Next moved to row 2 beside Place button)
-                    r1c1,r1c2,r1c3,r1c4,r1c5,r1c6 = st.columns([2,1,1,1,1,0.6])
-                    p['name'] = r1c1.text_input("Name", value=p.get('name',''), key=f"p_name_{i}")
-                    p['conntemp'] = r1c2.text_input("Product Tin", value=p.get('conntemp',''), key=f"p_conntemp_{i}")
-                    # Product outlet temperature
-                    p['product_tout'] = r1c3.text_input("P Tout", value=p.get('product_tout',''), key=f"p_ptout_{i}")
-                    p['connm'] = r1c4.text_input("P ṁ", value=p.get('connm',''), key=f"p_connm_{i}")
-                    p['conncp'] = r1c5.text_input("P cp", value=p.get('conncp',''), key=f"p_conncp_{i}")
-                    if r1c6.button("✕", key=f"del_proc_{i}"):
+                    # First row: product parameters (name removed)
+                    r1c1,r1c2,r1c3,r1c4,r1c5 = st.columns([1,1,1,1,0.6])
+                    p['conntemp'] = r1c1.text_input("Product Tin", value=p.get('conntemp',''), key=f"p_conntemp_{i}")
+                    p['product_tout'] = r1c2.text_input("P Tout", value=p.get('product_tout',''), key=f"p_ptout_{i}")
+                    p['connm'] = r1c3.text_input("P ṁ", value=p.get('connm',''), key=f"p_connm_{i}")
+                    p['conncp'] = r1c4.text_input("P cp", value=p.get('conncp',''), key=f"p_conncp_{i}")
+                    if r1c5.button("✕", key=f"del_proc_{i}"):
                         delete_process(st.session_state, i)
                         st.rerun()
                     # Row for coordinates + placement buttons
