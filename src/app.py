@@ -245,12 +245,12 @@ with left:
             def _reindex_groups_after_delete(del_idx: int):
                 groups = st.session_state.get('proc_groups', [])
                 new_groups = []
-                for g_list in groups:
+                for grp in groups:
                     updated = []
-                    for pi in g_list:
-                        if pi == del_idx:
+                    for proc_index in grp:
+                        if proc_index == del_idx:
                             continue
-                        updated.append(pi - 1 if pi > del_idx else pi)
+                        updated.append(proc_index - 1 if proc_index > del_idx else proc_index)
                     new_groups.append(updated)
                 st.session_state['proc_groups'] = new_groups
 
@@ -453,6 +453,53 @@ with right:
                     ).add_to(fmap)
                 except (ValueError, TypeError):
                     pass
+        # Draw connection lines according to 'next' fields (requires coordinates for both ends)
+        # Build lookup by lowercase name and also index mapping
+        name_lookup = {}
+        coord_by_idx = {}
+        for idx, p in enumerate(st.session_state['processes']):
+            lat = p.get('lat'); lon = p.get('lon')
+            try:
+                if lat not in (None, "", "None") and lon not in (None, "", "None"):
+                    lat_f = float(lat); lon_f = float(lon)
+                    coord_by_idx[idx] = (lat_f, lon_f)
+                    nm = (p.get('name') or f"P{idx+1}").strip().lower()
+                    if nm:
+                        name_lookup.setdefault(nm, []).append(idx)
+            except (ValueError, TypeError):
+                continue
+        def _parse_targets(raw_targets):
+            if not raw_targets:
+                return []
+            tokens = []
+            for raw_piece in raw_targets.replace(';', ',').replace('|', ',').split(','):
+                tkn = raw_piece.strip()
+                if tkn:
+                    tokens.append(tkn)
+            return tokens
+        for src_idx, p in enumerate(st.session_state['processes']):
+            if src_idx not in coord_by_idx:
+                continue
+            raw_next = p.get('next', '') or ''
+            for next_token in _parse_targets(raw_next):
+                # numeric index (1-based)
+                tgt_indices = []
+                if next_token.isdigit():
+                    val = int(next_token) - 1
+                    if val in coord_by_idx:
+                        tgt_indices.append(val)
+                else:
+                    lname_lookup = next_token.lower()
+                    tgt_indices.extend(name_lookup.get(lname_lookup, []))
+                for tgt_idx in tgt_indices:
+                    if tgt_idx == src_idx:
+                        continue
+                    lat1, lon1 = coord_by_idx[src_idx]
+                    lat2, lon2 = coord_by_idx[tgt_idx]
+                    try:
+                        folium.PolyLine([(lat1, lon1), (lat2, lon2)], color='red', weight=2, opacity=0.7).add_to(fmap)
+                    except (ValueError, TypeError):
+                        pass  # skip invalid
         fmap_data = st_folium(
             fmap,
             key="selector_map",
@@ -532,12 +579,17 @@ with right:
                 base_img = Image.open(BytesIO(st.session_state['map_snapshot'])).convert("RGBA")
                 w, h = base_img.size
 
-                # --- Overlay process boxes on snapshot ---
-
+                # --- Overlay process boxes & connecting arrows on snapshot ---
                 draw = ImageDraw.Draw(base_img)
                 font = None
-                try: font = ImageFont.load_default()
-                except (OSError, IOError): pass
+                try:
+                    font = ImageFont.load_default()
+                except (OSError, IOError):
+                    pass
+
+                # First pass: compute positions & bounding boxes
+                positioned = []  # list of dicts with: idx,label,center,box,(next_raw)
+                name_index = {}  # map lowercase name -> list of indices (to handle duplicates)
                 for i, p in enumerate(st.session_state['processes']):
                     lat = p.get('lat'); lon = p.get('lon')
                     if lat in (None, "", "None") or lon in (None, "", "None"):
@@ -552,28 +604,99 @@ with right:
                             w,
                             h
                         )
-                        if proc_px < -50 or proc_py < -20 or proc_px > w+50 or proc_py > h+20:
-                            continue  # off image
+                        # Skip if far outside snapshot bounds (padding margin)
+                        if proc_px < -50 or proc_py < -20 or proc_px > w + 50 or proc_py > h + 20:
+                            continue
                         label = p.get('name') or f"P{i+1}"
                         padding = 4
-                        text_bbox = draw.textbbox((0,0), label, font=font) if font else (0,0,len(label)*6,10)
-                        tw = text_bbox[2]-text_bbox[0]
-                        th = text_bbox[3]-text_bbox[1]
-                        box_w = tw + padding*2
-                        box_h = th + padding*2
-                        x0 = int(proc_px - box_w/2)
-                        y0 = int(proc_py - box_h/2)
+                        text_bbox = draw.textbbox((0, 0), label, font=font) if font else (0, 0, len(label) * 6, 10)
+                        tw = text_bbox[2] - text_bbox[0]
+                        th = text_bbox[3] - text_bbox[1]
+                        box_w = tw + padding * 2
+                        box_h = th + padding * 2
+                        x0 = int(proc_px - box_w / 2)
+                        y0 = int(proc_py - box_h / 2)
                         x1 = x0 + box_w
                         y1 = y0 + box_h
-                        # clamp
                         if x1 < 0 or y1 < 0 or x0 > w or y0 > h:
                             continue
-                        draw.rectangle([x0, y0, x1, y1], fill=(255,255,255,220), outline=(0,0,0,255), width=1)
-                        tx = x0 + padding
-                        ty = y0 + padding
-                        draw.text((tx, ty), label, fill=(0,0,0,255), font=font)
+                        positioned.append({
+                            'idx': i,
+                            'label': label,
+                            'center': (proc_px, proc_py),
+                            'box': (x0, y0, x1, y1),
+                            'next_raw': p.get('next', '') or ''
+                        })
+                        lname = label.strip().lower()
+                        name_index.setdefault(lname, []).append(len(positioned) - 1)
                     except (ValueError, TypeError):
                         continue
+
+                # Helper: draw arrow with head
+                def _draw_arrow(draw_ctx, x_start, y_start, x_end, y_end, color=(255, 0, 0, 255), width=2, head_len=10, head_angle_deg=28):
+                    import math
+                    draw_ctx.line([(x_start, y_start), (x_end, y_end)], fill=color, width=width)
+                    ang = math.atan2(y_end - y_start, x_end - x_start)
+                    ang_left = ang - math.radians(head_angle_deg)
+                    ang_right = ang + math.radians(head_angle_deg)
+                    x_left = x_end - head_len * math.cos(ang_left)
+                    y_left = y_end - head_len * math.sin(ang_left)
+                    x_right = x_end - head_len * math.cos(ang_right)
+                    y_right = y_end - head_len * math.sin(ang_right)
+                    draw_ctx.polygon([(x_end, y_end), (x_left, y_left), (x_right, y_right)], fill=color)
+
+                # Build quick lookup by process name (case-insensitive)
+                # Also allow fallback tokens like numeric indices (1-based) or label exactly
+                def _resolve_targets(target_token):
+                    target_token = target_token.strip()
+                    if not target_token:
+                        return []
+                    # numeric index support
+                    if target_token.isdigit():
+                        idx_int = int(target_token) - 1
+                        for d in positioned:
+                            if d['idx'] == idx_int:
+                                return [d]
+                        return []
+                    lname2 = target_token.lower()
+                    if lname2 in name_index:
+                        return [positioned[i] for i in name_index[lname2]]
+                    # Try exact match ignoring case across original names (robustness)
+                    return [d for d in positioned if d['label'].lower() == lname2]
+
+                # Second pass: draw arrows (under boxes for clarity -> so draw now, then boxes after?)
+                # We'll draw arrows first then boxes so boxes sit on top.
+                for src in positioned:
+                    raw_next = src['next_raw']
+                    if not raw_next:
+                        continue
+                    # Split by common delimiters
+                    parts = []
+                    for chunk in raw_next.replace(';', ',').replace('|', ',').split(','):
+                        part = chunk.strip()
+                        if part:
+                            parts.append(part)
+                    if not parts:
+                        continue
+                    sx, sy = src['center']
+                    for part_token in parts:
+                        targets = _resolve_targets(part_token)
+                        for tgt in targets:
+                            if tgt is src:
+                                continue  # no self-loop for now
+                            tx, ty = tgt['center']
+                            # Adjust end/start points to edge of boxes instead of exact center (optional improvement)
+                            _draw_arrow(draw, sx, sy, tx, ty, color=(255, 0, 0, 200), width=2)
+
+                # Third pass: draw boxes & labels on top
+                for item in positioned:
+                    x0, y0, x1, y1 = item['box']
+                    label = item['label']
+                    padding = 4
+                    draw.rectangle([x0, y0, x1, y1], fill=(255, 255, 255, 230), outline=(0, 0, 0, 255), width=1)
+                    tx = x0 + padding
+                    ty = y0 + padding
+                    draw.text((tx, ty), label, fill=(0, 0, 0, 255), font=font)
                 img = base_img  # for coordinate capture
                 coords = streamlit_image_coordinates(img, key="meas_img", width=w)
                 if st.session_state['placement_mode'] and coords is not None and st.session_state.get('placing_process_idx') is not None:
