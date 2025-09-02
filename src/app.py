@@ -138,19 +138,57 @@ left, right = st.columns([2.4, 5.6], gap="small")  # wider process panel, smalle
 with left:
     # Compact mode buttons side by side
     mode_current = st.session_state['ui_mode_radio']
-    mcol1, mcol2 = st.columns(2)
-    if mcol1.button("Select", key="btn_mode_select", disabled=(mode_current=="Select Map")):
-        st.session_state['ui_mode_radio'] = "Select Map"
-        st.rerun()
-    if mcol2.button("Analyze", key="btn_mode_analyze", disabled=(mode_current=="Analyze")):
-        st.session_state['ui_mode_radio'] = "Analyze"
-        st.rerun()
+    if mode_current == "Select Map":
+        col_lock = st.columns([1])[0]
+        if col_lock.button("Lock map and analyze", key="btn_lock_analyze"):
+            new_center = st.session_state['selector_center'][:]
+            new_zoom = st.session_state['selector_zoom']
+            regenerate = (
+                (st.session_state.get('map_snapshot') is None) or
+                (new_center != st.session_state.get('map_center')) or
+                (new_zoom != st.session_state.get('map_zoom'))
+            )
+            st.session_state['map_center'] = new_center
+            st.session_state['map_zoom'] = new_zoom
+            if regenerate:
+                try:
+                    m_static = StaticMap(MAP_WIDTH, MAP_HEIGHT, url_template='https://a.tile.openstreetmap.org/{z}/{x}/{y}.png')
+                    marker = CircleMarker((new_center[1], new_center[0]), 'red', 12)
+                    m_static.add_marker(marker)
+                    image = m_static.render(zoom=new_zoom)
+                    buf = BytesIO()
+                    image.save(buf, format='PNG')
+                    st.session_state['map_snapshot'] = buf.getvalue()
+                except RuntimeError as gen_err:
+                    st.session_state['ui_status_msg'] = f"Capture failed: {gen_err}"
+                    st.rerun()
+            st.session_state['map_locked'] = True
+            st.session_state['ui_mode_radio'] = 'Analyze'
+            if not st.session_state.get('ui_status_msg'):
+                st.session_state['ui_status_msg'] = "Snapshot captured"
+            st.rerun()
+    else:  # Analyze mode
+        col_unlock, col_add = st.columns([1,1])
+        if col_unlock.button("Unlock map and select", key="btn_unlock_select"):
+            st.session_state.update({
+                'ui_mode_radio': 'Select Map',
+                'map_locked': False,
+                'map_snapshot': None,
+                'measure_mode': False,
+                'measure_points': [],
+                'measure_distance_m': None,
+                'placement_mode': False,
+                'placing_process_idx': None,
+                'ui_status_msg': None,
+            })
+            st.rerun()
+        if col_add.button("Add Process", key="btn_add_process_top"):
+            add_process(st.session_state)
+            st.session_state['ui_status_msg'] = "Added blank process"
+            st.rerun()
     mode = st.session_state['ui_mode_radio']
     # Process & Stream UI (only show in Analyze mode to mimic original workflow)
     if mode == "Analyze":
-        if st.button("Add Process", key="btn_add_process_simple"):
-            add_process(st.session_state)
-            st.session_state['ui_status_msg'] = "Added blank process"
         if st.session_state['processes']:
             for i, p in enumerate(st.session_state['processes']):
                 exp_label = f"{i+1}. {p.get('name') or '(unnamed)'}"
@@ -230,8 +268,8 @@ with left:
 with right:
     # mode already selected on left
     if mode == "Select Map":
-        # Address search & lock row
-        sel_c1, sel_c2, sel_c3 = st.columns([3,2,2])
+        # Address search row (locking handled by top button now)
+        sel_c1, sel_c2 = st.columns([4,2])
         with sel_c1:
             with st.form(key="search_form", clear_on_submit=False):
                 address = st.text_input("Search address", key="address_input")
@@ -252,33 +290,7 @@ with right:
                 except requests.exceptions.RequestException as req_err:
                     st.error(f"Search failed: {req_err}")
         with sel_c2:
-            st.write("")  # spacer
-        with sel_c3:
-            if st.button("Lock & Capture", key="lock_capture"):
-                new_center = st.session_state['selector_center'][:]
-                new_zoom = st.session_state['selector_zoom']
-                regenerate = (
-                    (st.session_state.get('map_snapshot') is None) or
-                    (new_center != st.session_state.get('map_center')) or
-                    (new_zoom != st.session_state.get('map_zoom'))
-                )
-                st.session_state['map_center'] = new_center
-                st.session_state['map_zoom'] = new_zoom
-                if regenerate:
-                    try:
-                        m_static = StaticMap(MAP_WIDTH, MAP_HEIGHT, url_template='https://a.tile.openstreetmap.org/{z}/{x}/{y}.png')
-                        marker = CircleMarker((new_center[1], new_center[0]), 'red', 12)
-                        m_static.add_marker(marker)
-                        image = m_static.render(zoom=new_zoom)
-                        buf = BytesIO()
-                        image.save(buf, format='PNG')
-                        st.session_state['map_snapshot'] = buf.getvalue()
-                    except RuntimeError as gen_err:
-                        st.error(f"Failed to capture map: {gen_err}")
-                        regenerate = False
-                st.session_state['map_locked'] = True
-                # Not auto-switching radio (would require rerun & programmatic set). Inform user instead.
-                st.info("Snapshot captured. Switch to Analyze tab to measure.")
+            st.caption("When ready, press 'Lock map and analyze'.")
 
         # Folium interactive map (center tracked but snapshot only on explicit lock)
         fmap = folium.Map(location=st.session_state['selector_center'], zoom_start=st.session_state['selector_zoom'])
@@ -327,9 +339,7 @@ with right:
             else:
                 st.session_state['selector_center'] = c
             st.session_state['selector_zoom'] = fmap_data['zoom']
-        st.caption("Pan/zoom freely. Press Lock & Capture above only when you want to freeze the view.")
-        if st.session_state['map_locked']:
-            st.info("Snapshot locked. Switch to Analyze or Unlock there.")
+        st.caption("Pan/zoom, then click 'Lock map and analyze' to capture a snapshot.")
     else:
         # Analysis mode
         if not st.session_state['map_locked']:
@@ -348,7 +358,7 @@ with right:
                 last_msg = st.session_state.get('ui_status_msg')
                 if placing_mode and placing_idx is not None and 0 <= placing_idx < len(st.session_state.get('processes', [])):
                     pname = st.session_state['processes'][placing_idx].get('name') or f"P{placing_idx+1}"
-                    st.info(f"Placing process: {pname} (click on snapshot)")
+                    st.info(f"Placing process: {pname} (Double click on map)")
                 elif measure_mode:
                     if dist_val is not None:
                         st.success(f"Distance: {dist_val:.2f} m ({dist_val/1000:.3f} km)")
@@ -370,10 +380,7 @@ with right:
                         st.session_state['measure_points'] = []
                         st.session_state['measure_distance_m'] = None
             with top_c3:
-                if st.button("Unlock", key="unlock_snapshot"):
-                    st.session_state.update({'map_locked': False, 'map_snapshot': None, 'measure_mode': False, 'measure_points': []})
-                    # User will manually switch back to Select Map via radio
-                    # No forced rerun to avoid flicker
+                st.empty()  # no separate unlock button now
 
             # Placement handled directly via per-process Place/Done buttons in left panel
 
