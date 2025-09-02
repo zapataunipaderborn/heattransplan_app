@@ -201,7 +201,7 @@ with left:
 
             for i, p in enumerate(st.session_state['processes']):
                 # Header: toggle | spacer | name | place/done | delete
-                header_cols = st.columns([0.08, 0.04, 0.8, 0.28, 0.10])
+                header_cols = st.columns([0.08, 0.04, 0.75, 0.32, 0.16])  # widened last column for confirmation buttons
                 toggle_label = "▾" if st.session_state['proc_expanded'][i] else "▸"
                 if header_cols[0].button(toggle_label, key=f"proc_toggle_{i}"):
                     st.session_state['proc_expanded'][i] = not st.session_state['proc_expanded'][i]
@@ -225,16 +225,17 @@ with left:
                 pending = st.session_state.get('proc_delete_pending')
                 if pending == i:
                     with header_cols[4]:
-                        c1, c2 = st.columns(2)
-                        if c1.button("Yes", key=f"confirm_del_{i}"):
+                        st.write("Sure?")
+                        if st.button("✅", key=f"confirm_del_{i}"):
                             delete_process(st.session_state, i)
                             st.session_state['proc_delete_pending'] = None
                             st.rerun()
-                        if c2.button("No", key=f"cancel_del_{i}"):
+                        if st.button("✖", key=f"cancel_del_{i}"):
                             st.session_state['proc_delete_pending'] = None
                 else:
                     if header_cols[4].button("✕", key=f"del_proc_{i}"):
                         st.session_state['proc_delete_pending'] = i
+                        st.rerun()
 
                 if st.session_state['proc_expanded'][i]:
                     # Product parameters row
