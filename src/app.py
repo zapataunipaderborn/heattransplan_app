@@ -108,6 +108,9 @@ div[data-testid="column"] > div:has(> div.map-region) {margin-top:0;}
 
 /* Tighter expander headers */
 div.streamlit-expanderHeader {padding:0.3rem 0.5rem !important;}
+/* Group boxed layout */
+.group-box {border:2px solid #ffffff; padding:6px 8px 8px 8px; margin:10px 0 16px 0; border-radius:6px; background:rgba(255,255,255,0.04);} 
+.group-box.collapsed {padding-bottom:4px;}
 
 </style>
 """, unsafe_allow_html=True)
@@ -252,6 +255,8 @@ with left:
                 st.session_state['proc_groups'] = new_groups
 
             for g, g_list in enumerate(st.session_state['proc_groups']):
+                # Top thick separator for group
+                st.markdown("<div style='height:3px; background:#888888; margin:12px 0 6px;'></div>", unsafe_allow_html=True)
                 # Arrow | Name | Add process | Count | Delete
                 gh_cols = st.columns([0.05, 0.40, 0.20, 0.10, 0.10])
                 g_toggle_label = "▾" if st.session_state['proc_group_expanded'][g] else "▸"
@@ -297,6 +302,8 @@ with left:
                             st.rerun()
 
                 if not st.session_state['proc_group_expanded'][g]:
+                    # Bottom separator for collapsed group
+                    st.markdown("<div style='height:2px; background:#888888; opacity:0.7; margin:6px 0 4px;'></div>", unsafe_allow_html=True)
                     continue
 
                 if not g_list:
@@ -393,9 +400,10 @@ with left:
                                 if st.button("Add", key=f"btn_add_first_stream_{i}"):
                                     add_stream_to_process(st.session_state, i)
                                     st.rerun()
-                    # Separator (white horizontal line) between processes inside a group
                     if local_idx < len(g_list) - 1:
-                        st.markdown("<div style='height:1px; background:#ffffff; margin:4px 0;'></div>", unsafe_allow_html=True)
+                        st.markdown("<div style='height:1px; background:#888888; opacity:0.5; margin:4px 0;'></div>", unsafe_allow_html=True)
+                # Bottom separator after expanded group
+                st.markdown("<div style='height:2px; background:#888888; opacity:0.7; margin:8px 0 4px;'></div>", unsafe_allow_html=True)
         else:
             st.info("No groups yet. Use 'Add group of processes' to start.")
     else:
