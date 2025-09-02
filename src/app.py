@@ -194,13 +194,16 @@ with left:
                 exp_label = f"{i+1}. {p.get('name') or '(unnamed)'}"
                 with st.expander(exp_label, expanded=False):
                     # Row for main attributes
-                    r1c1,r1c2,r1c3,r1c4,r1c5,r1c6 = st.columns([2,1,1,1,1,1])
+                    # Added Product Tin (renamed from Conn Temp), new P Tout field, and relabeled mass & cp fields
+                    r1c1,r1c2,r1c3,r1c4,r1c5,r1c6,r1c7 = st.columns([2,1,1,1,1,1,0.6])
                     p['name'] = r1c1.text_input("Name", value=p.get('name',''), key=f"p_name_{i}")
                     p['next'] = r1c2.text_input("Next", value=p.get('next',''), key=f"p_next_{i}")
-                    p['conntemp'] = r1c3.text_input("Conn Temp", value=p.get('conntemp',''), key=f"p_conntemp_{i}")
-                    p['connm'] = r1c4.text_input("Conn m", value=p.get('connm',''), key=f"p_connm_{i}")
-                    p['conncp'] = r1c5.text_input("Conn cp", value=p.get('conncp',''), key=f"p_conncp_{i}")
-                    if r1c6.button("del", key=f"del_proc_{i}"):
+                    p['conntemp'] = r1c3.text_input("Product Tin", value=p.get('conntemp',''), key=f"p_conntemp_{i}")
+                    # New product outlet temperature field (stored as 'product_tout')
+                    p['product_tout'] = r1c4.text_input("P Tout", value=p.get('product_tout',''), key=f"p_ptout_{i}")
+                    p['connm'] = r1c5.text_input("P ṁ", value=p.get('connm',''), key=f"p_connm_{i}")
+                    p['conncp'] = r1c6.text_input("P cp", value=p.get('conncp',''), key=f"p_conncp_{i}")
+                    if r1c7.button("del", key=f"del_proc_{i}"):
                         delete_process(st.session_state, i)
                         st.rerun()
                     # Row for coordinates + placement buttons

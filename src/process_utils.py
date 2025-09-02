@@ -8,7 +8,7 @@ def init_process_state(session_state):
     if 'selected_process_idx' not in session_state:
         session_state['selected_process_idx'] = None
 
-REQUIRED_PROC_COLS = {"name","next","conntemp","connm","conncp","stream_no","mdot","temp_in","temp_out","cp"}
+REQUIRED_PROC_COLS = {"name","next","conntemp","product_tout","connm","conncp","stream_no","mdot","temp_in","temp_out","cp"}
 
 def parse_process_csv_file(uploaded_file) -> Tuple[Optional[list], str]:
     if uploaded_file is None:
@@ -22,14 +22,16 @@ def parse_process_csv_file(uploaded_file) -> Tuple[Optional[list], str]:
         procs = []
         proc_lookup = {}
         for _, row in df.iterrows():
-            key = (row['name'], row['next'], row['conntemp'], row['connm'], row['conncp'])
+            # Include product_tout in key for uniqueness if present
+            key = (row['name'], row['next'], row['conntemp'], row.get('product_tout',''), row['connm'], row['conncp'])
             if key not in proc_lookup:
                 p = {
                     "name": row.get('name',''),
                     "next": row.get('next',''),
-                    "conntemp": row.get('conntemp',''),
-                    "connm": row.get('connm',''),
-                    "conncp": row.get('conncp',''),
+                    "conntemp": row.get('conntemp',''),  # Product Tin
+                    "product_tout": row.get('product_tout',''),  # P Tout
+                    "connm": row.get('connm',''),  # P ṁ
+                    "conncp": row.get('conncp',''),  # P cp
                     "streams": [],
                     "lat": row.get('lat') if 'lat' in df.columns else None,
                     "lon": row.get('lon') if 'lon' in df.columns else None,
@@ -53,14 +55,14 @@ def processes_to_csv_bytes(processes: List[Dict]) -> bytes:
     for p in processes:
         if not p.get('streams'):
             rows.append({
-                'name': p.get('name',''), 'next': p.get('next',''), 'conntemp': p.get('conntemp',''),
+                'name': p.get('name',''), 'next': p.get('next',''), 'conntemp': p.get('conntemp',''), 'product_tout': p.get('product_tout',''),
                 'connm': p.get('connm',''), 'conncp': p.get('conncp',''), 'stream_no': '', 'mdot':'','temp_in':'','temp_out':'','cp':'',
                 'lat': p.get('lat'), 'lon': p.get('lon')
             })
         else:
             for idx, s in enumerate(p['streams'], start=1):
                 rows.append({
-                    'name': p.get('name',''), 'next': p.get('next',''), 'conntemp': p.get('conntemp',''),
+                    'name': p.get('name',''), 'next': p.get('next',''), 'conntemp': p.get('conntemp',''), 'product_tout': p.get('product_tout',''),
                     'connm': p.get('connm',''), 'conncp': p.get('conncp',''), 'stream_no': idx,
                     'mdot': s.get('mdot',''), 'temp_in': s.get('temp_in',''), 'temp_out': s.get('temp_out',''), 'cp': s.get('cp',''),
                     'lat': p.get('lat'), 'lon': p.get('lon')
@@ -72,7 +74,7 @@ def processes_to_csv_bytes(processes: List[Dict]) -> bytes:
 
 def add_process(session_state):
     session_state['processes'].append({
-        'name':'','next':'','conntemp':'','connm':'','conncp':'','streams':[], 'lat':None,'lon':None
+        'name':'','next':'','conntemp':'','product_tout':'','connm':'','conncp':'','streams':[], 'lat':None,'lon':None
     })
     session_state['selected_process_idx'] = len(session_state['processes'])-1
 
