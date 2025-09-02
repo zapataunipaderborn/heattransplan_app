@@ -444,7 +444,7 @@ with right:
             if lat not in (None, "") and lon not in (None, ""):
                 try:
                     label = p.get('name') or f"P{idx+1}"
-                    html = f"""<div style='background:rgba(255,255,255,0.85);border:1px solid #333;padding:2px 6px;font-size:12px;border-radius:4px;white-space:nowrap;'>📦 {label}</div>"""
+                    html = f"""<div style='background:rgba(255,255,255,0.92);border:2px solid #222;padding:4px 8px;font-size:14px;font-weight:600;border-radius:6px;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,0.35);'>📦 {label}</div>"""
                     folium.Marker(
                         [float(lat), float(lon)],
                         tooltip=label,
@@ -497,7 +497,17 @@ with right:
                     lat1, lon1 = coord_by_idx[src_idx]
                     lat2, lon2 = coord_by_idx[tgt_idx]
                     try:
-                        folium.PolyLine([(lat1, lon1), (lat2, lon2)], color='red', weight=2, opacity=0.7).add_to(fmap)
+                        # Main line
+                        folium.PolyLine([(lat1, lon1), (lat2, lon2)], color='#d00', weight=3, opacity=0.85).add_to(fmap)
+                        # Arrowhead (small DivIcon slightly before target)
+                        import math as _math_inner
+                        dlat = lat2 - lat1; dlon = lon2 - lon1
+                        if abs(dlat) + abs(dlon) > 0:
+                            arrow_lat = lat2 - dlat * 0.12
+                            arrow_lon = lon2 - dlon * 0.12
+                            ang_deg = _math_inner.degrees(_math_inner.atan2(dlat, dlon))
+                            arrow_html = f"""<div style='transform:translate(-50%,-50%) rotate({ang_deg}deg);font-size:20px;line-height:20px;color:#d00;font-weight:700;'>➤</div>"""
+                            folium.Marker([arrow_lat, arrow_lon], icon=folium.DivIcon(html=arrow_html), tooltip="").add_to(fmap)
                     except (ValueError, TypeError):
                         pass  # skip invalid
         fmap_data = st_folium(
@@ -581,11 +591,15 @@ with right:
 
                 # --- Overlay process boxes & connecting arrows on snapshot ---
                 draw = ImageDraw.Draw(base_img)
-                font = None
+                # Larger font for better readability
+                BOX_FONT_SIZE = 16
                 try:
-                    font = ImageFont.load_default()
+                    font = ImageFont.truetype("DejaVuSans.ttf", BOX_FONT_SIZE)
                 except (OSError, IOError):
-                    pass
+                    try:
+                        font = ImageFont.load_default()
+                    except (OSError, IOError):
+                        font = None
 
                 # First pass: compute positions & bounding boxes
                 positioned = []  # list of dicts with: idx,label,center,box,(next_raw)
@@ -608,7 +622,7 @@ with right:
                         if proc_px < -50 or proc_py < -20 or proc_px > w + 50 or proc_py > h + 20:
                             continue
                         label = p.get('name') or f"P{i+1}"
-                        padding = 4
+                        padding = 6
                         text_bbox = draw.textbbox((0, 0), label, font=font) if font else (0, 0, len(label) * 6, 10)
                         tw = text_bbox[2] - text_bbox[0]
                         th = text_bbox[3] - text_bbox[1]
@@ -633,7 +647,7 @@ with right:
                         continue
 
                 # Helper: draw arrow with head
-                def _draw_arrow(draw_ctx, x_start, y_start, x_end, y_end, color=(255, 0, 0, 255), width=2, head_len=10, head_angle_deg=28):
+                def _draw_arrow(draw_ctx, x_start, y_start, x_end, y_end, color=(208, 0, 0, 255), width=3, head_len=16, head_angle_deg=30):
                     import math
                     draw_ctx.line([(x_start, y_start), (x_end, y_end)], fill=color, width=width)
                     ang = math.atan2(y_end - y_start, x_end - x_start)
@@ -685,18 +699,53 @@ with right:
                             if tgt is src:
                                 continue  # no self-loop for now
                             tx, ty = tgt['center']
-                            # Adjust end/start points to edge of boxes instead of exact center (optional improvement)
-                            _draw_arrow(draw, sx, sy, tx, ty, color=(255, 0, 0, 200), width=2)
+                            # Adjust start/end to box edges
+                            # Source box dims
+                            sx0, sy0, sx1, sy1 = src['box']
+                            sw2 = (sx1 - sx0) / 2.0
+                            sh2 = (sy1 - sy0) / 2.0
+                            # Target box dims
+                            tx0, ty0, tx1, ty1 = tgt['box']
+                            tw2 = (tx1 - tx0) / 2.0
+                            th2 = (ty1 - ty0) / 2.0
+                            vec_dx = tx - sx
+                            vec_dy = ty - sy
+                            if vec_dx == 0 and vec_dy == 0:
+                                continue
+                            import math as _math
+                            # Factor to exit source box boundary
+                            factors_s = []
+                            if vec_dx != 0:
+                                factors_s.append(sw2 / abs(vec_dx))
+                            if vec_dy != 0:
+                                factors_s.append(sh2 / abs(vec_dy))
+                            t_s = min(factors_s) if factors_s else 0
+                            # Factor to enter target box boundary from target center backwards
+                            factors_t = []
+                            if vec_dx != 0:
+                                factors_t.append(tw2 / abs(vec_dx))
+                            if vec_dy != 0:
+                                factors_t.append(th2 / abs(vec_dy))
+                            t_t = min(factors_t) if factors_t else 0
+                            start_x = sx + vec_dx * t_s * 1.02
+                            start_y = sy + vec_dy * t_s * 1.02
+                            end_x = tx - vec_dx * t_t * 1.02
+                            end_y = ty - vec_dy * t_t * 1.02
+                            _draw_arrow(draw, start_x, start_y, end_x, end_y, color=(208, 0, 0, 220), width=3)
 
                 # Third pass: draw boxes & labels on top
                 for item in positioned:
                     x0, y0, x1, y1 = item['box']
                     label = item['label']
-                    padding = 4
-                    draw.rectangle([x0, y0, x1, y1], fill=(255, 255, 255, 230), outline=(0, 0, 0, 255), width=1)
+                    padding = 6
+                    # Filled box
+                    draw.rectangle([x0, y0, x1, y1], fill=(255, 255, 255, 240), outline=(20, 20, 20, 255), width=2)
                     tx = x0 + padding
                     ty = y0 + padding
-                    draw.text((tx, ty), label, fill=(0, 0, 0, 255), font=font)
+                    if font:
+                        draw.text((tx, ty), label, fill=(0, 0, 0, 255), font=font)
+                    else:
+                        draw.text((tx, ty), label, fill=(0, 0, 0, 255))
                 img = base_img  # for coordinate capture
                 coords = streamlit_image_coordinates(img, key="meas_img", width=w)
                 if st.session_state['placement_mode'] and coords is not None and st.session_state.get('placing_process_idx') is not None:
