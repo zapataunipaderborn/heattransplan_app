@@ -390,7 +390,9 @@ with left:
                         streams = p.get('streams', [])
                         if streams:
                             for si, s in enumerate(streams):
-                                sc1,sc2,sc3,sc4,sc5 = st.columns([1,1,1,1,1])
+                                lbl_col, sc1,sc2,sc3,sc4,sc5 = st.columns([0.5,1,1,1,1,0.6])
+                                # Static stream label (non-editable)
+                                lbl_col.markdown(f"**S{si+1}**")
                                 s['temp_in'] = sc1.text_input("Tin", value=str(s.get('temp_in','')), key=f"s_tin_{i}_{si}")
                                 s['temp_out'] = sc2.text_input("Tout", value=str(s.get('temp_out','')), key=f"s_tout_{i}_{si}")
                                 s['mdot'] = sc3.text_input("ṁ", value=str(s.get('mdot','')), key=f"s_mdot_{i}_{si}")
@@ -398,7 +400,8 @@ with left:
                                 if sc5.button("✕", key=f"del_stream_{i}_{si}"):
                                     delete_stream_from_process(st.session_state, i, si)
                                     st.rerun()
-                            as1,as2,as3,as4,as5 = st.columns([1,1,1,1,1])
+                            next_label_col, as1,as2,as3,as4,as5 = st.columns([0.5,1,1,1,1,0.6])
+                            next_label_col.markdown(f"**S{len(streams)+1}**")
                             new_tin = as1.text_input("Tin", key=f"new_tin_{i}")
                             new_tout = as2.text_input("Tout", key=f"new_tout_{i}")
                             new_mdot = as3.text_input("ṁ", key=f"new_mdot_{i}")
@@ -413,7 +416,8 @@ with left:
                                 })
                                 st.rerun()
                         else:
-                            nc1, nc2 = st.columns([4,1])
+                            nc_label, nc1, nc2 = st.columns([0.5,3.5,1])
+                            nc_label.markdown("**S1**")
                             with nc1:
                                 st.caption("No streams yet.")
                             with nc2:
