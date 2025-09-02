@@ -195,18 +195,46 @@ with left:
                 st.session_state['proc_expanded'] = []
             if len(st.session_state['proc_expanded']) != len(st.session_state['processes']):
                 st.session_state['proc_expanded'] = [False]*len(st.session_state['processes'])
+            # Track pending delete index
+            if 'proc_delete_pending' not in st.session_state:
+                st.session_state['proc_delete_pending'] = None
 
             for i, p in enumerate(st.session_state['processes']):
-                header_cols = st.columns([0.10, 0.05, 1.3, 0.12])  # toggle, spacer, name, delete
+                # Header: toggle | spacer | name | place/done | delete
+                header_cols = st.columns([0.08, 0.04, 0.8, 0.28, 0.10])
                 toggle_label = "▾" if st.session_state['proc_expanded'][i] else "▸"
                 if header_cols[0].button(toggle_label, key=f"proc_toggle_{i}"):
                     st.session_state['proc_expanded'][i] = not st.session_state['proc_expanded'][i]
                     st.rerun()
-                # name input in third column after spacer
                 p['name'] = header_cols[2].text_input(f"{i+1}. Name", value=p.get('name',''), key=f"p_name_{i}")
-                if header_cols[3].button("✕", key=f"del_proc_{i}"):
-                    delete_process(st.session_state, i)
-                    st.rerun()
+                # Place / Done button now in header
+                place_active = (st.session_state['placement_mode'] and 
+                                st.session_state.get('placing_process_idx') == i)
+                if not place_active:
+                    if header_cols[3].button("Place", key=f"place_{i}"):
+                        st.session_state['placement_mode'] = True
+                        st.session_state['measure_mode'] = False
+                        st.session_state['placing_process_idx'] = i
+                        st.rerun()
+                else:
+                    if header_cols[3].button("Done", key=f"done_place_{i}"):
+                        st.session_state['placement_mode'] = False
+                        st.session_state['placing_process_idx'] = None
+                        st.rerun()
+                # Delete with confirmation
+                pending = st.session_state.get('proc_delete_pending')
+                if pending == i:
+                    with header_cols[4]:
+                        c1, c2 = st.columns(2)
+                        if c1.button("Yes", key=f"confirm_del_{i}"):
+                            delete_process(st.session_state, i)
+                            st.session_state['proc_delete_pending'] = None
+                            st.rerun()
+                        if c2.button("No", key=f"cancel_del_{i}"):
+                            st.session_state['proc_delete_pending'] = None
+                else:
+                    if header_cols[4].button("✕", key=f"del_proc_{i}"):
+                        st.session_state['proc_delete_pending'] = i
 
                 if st.session_state['proc_expanded'][i]:
                     # Product parameters row
@@ -216,21 +244,11 @@ with left:
                     p['connm'] = r1c3.text_input("P ṁ", value=p.get('connm',''), key=f"p_connm_{i}")
                     p['conncp'] = r1c4.text_input("P cp", value=p.get('conncp',''), key=f"p_conncp_{i}")
 
-                    # Coordinates / placement row
-                    r2c1,r2c2,r2c3,r2c4 = st.columns([1,1,1,2])
+                    # Coordinates & Next (Place button removed from this row)
+                    r2c1,r2c2,r2c3 = st.columns([1,1,3])
                     p['lat'] = r2c1.text_input("Lat", value=str(p.get('lat') or ''), key=f"p_lat_{i}")
                     p['lon'] = r2c2.text_input("Lon", value=str(p.get('lon') or ''), key=f"p_lon_{i}")
-                    place_active = st.session_state['placement_mode'] and st.session_state.get('placing_process_idx') == i
-                    if not place_active:
-                        if r2c3.button("Place", key=f"place_{i}"):
-                            st.session_state['placement_mode'] = True
-                            st.session_state['measure_mode'] = False
-                            st.session_state['placing_process_idx'] = i
-                    else:
-                        if r2c3.button("Done", key=f"done_place_{i}"):
-                            st.session_state['placement_mode'] = False
-                            st.session_state['placing_process_idx'] = None
-                    p['next'] = r2c4.text_input("Next processes", value=p.get('next',''), key=f"p_next_{i}")
+                    p['next'] = r2c3.text_input("Next processes", value=p.get('next',''), key=f"p_next_{i}")
 
                     st.markdown("**Streams**")
                     streams = p.get('streams', [])
