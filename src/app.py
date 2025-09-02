@@ -444,7 +444,7 @@ with right:
             if lat not in (None, "") and lon not in (None, ""):
                 try:
                     label = p.get('name') or f"P{idx+1}"
-                    html = f"""<div style='background:rgba(255,255,255,0.92);border:2px solid #222;padding:4px 8px;font-size:14px;font-weight:600;border-radius:6px;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,0.35);'>📦 {label}</div>"""
+                    html = f"""<div style='background:#e0f2ff;border:2px solid #1769aa;padding:5px 10px;font-size:15px;font-weight:600;color:#0a3555;border-radius:6px;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,0.35);'>📦 {label}</div>"""
                     folium.Marker(
                         [float(lat), float(lon)],
                         tooltip=label,
@@ -498,7 +498,7 @@ with right:
                     lat2, lon2 = coord_by_idx[tgt_idx]
                     try:
                         # Main line
-                        folium.PolyLine([(lat1, lon1), (lat2, lon2)], color='#d00', weight=3, opacity=0.85).add_to(fmap)
+                        folium.PolyLine([(lat1, lon1), (lat2, lon2)], color='#000000', weight=3, opacity=0.9).add_to(fmap)
                         # Arrowhead (small DivIcon slightly before target)
                         import math as _math_inner
                         dlat = lat2 - lat1; dlon = lon2 - lon1
@@ -506,7 +506,7 @@ with right:
                             arrow_lat = lat2 - dlat * 0.12
                             arrow_lon = lon2 - dlon * 0.12
                             ang_deg = _math_inner.degrees(_math_inner.atan2(dlat, dlon))
-                            arrow_html = f"""<div style='transform:translate(-50%,-50%) rotate({ang_deg}deg);font-size:20px;line-height:20px;color:#d00;font-weight:700;'>➤</div>"""
+                            arrow_html = f"""<div style='transform:translate(-50%,-50%) rotate({ang_deg}deg);font-size:22px;line-height:20px;color:#000000;font-weight:700;'>➤</div>"""
                             folium.Marker([arrow_lat, arrow_lon], icon=folium.DivIcon(html=arrow_html), tooltip="").add_to(fmap)
                     except (ValueError, TypeError):
                         pass  # skip invalid
@@ -592,7 +592,7 @@ with right:
                 # --- Overlay process boxes & connecting arrows on snapshot ---
                 draw = ImageDraw.Draw(base_img)
                 # Larger font for better readability
-                BOX_FONT_SIZE = 16
+                BOX_FONT_SIZE = 20
                 try:
                     font = ImageFont.truetype("DejaVuSans.ttf", BOX_FONT_SIZE)
                 except (OSError, IOError):
@@ -647,7 +647,7 @@ with right:
                         continue
 
                 # Helper: draw arrow with head
-                def _draw_arrow(draw_ctx, x_start, y_start, x_end, y_end, color=(208, 0, 0, 255), width=3, head_len=16, head_angle_deg=30):
+                def _draw_arrow(draw_ctx, x_start, y_start, x_end, y_end, color=(0, 0, 0, 255), width=3, head_len=18, head_angle_deg=30):
                     import math
                     draw_ctx.line([(x_start, y_start), (x_end, y_end)], fill=color, width=width)
                     ang = math.atan2(y_end - y_start, x_end - x_start)
@@ -731,7 +731,7 @@ with right:
                             start_y = sy + vec_dy * t_s * 1.02
                             end_x = tx - vec_dx * t_t * 1.02
                             end_y = ty - vec_dy * t_t * 1.02
-                            _draw_arrow(draw, start_x, start_y, end_x, end_y, color=(208, 0, 0, 220), width=3)
+                            _draw_arrow(draw, start_x, start_y, end_x, end_y, color=(0, 0, 0, 245), width=3)
 
                 # Third pass: draw boxes & labels on top
                 for item in positioned:
@@ -739,13 +739,14 @@ with right:
                     label = item['label']
                     padding = 6
                     # Filled box
-                    draw.rectangle([x0, y0, x1, y1], fill=(255, 255, 255, 240), outline=(20, 20, 20, 255), width=2)
+                    # Light blue fill, darker blue border
+                    draw.rectangle([x0, y0, x1, y1], fill=(224, 242, 255, 245), outline=(23, 105, 170, 255), width=2)
                     tx = x0 + padding
                     ty = y0 + padding
                     if font:
-                        draw.text((tx, ty), label, fill=(0, 0, 0, 255), font=font)
+                        draw.text((tx, ty), label, fill=(10, 53, 85, 255), font=font)
                     else:
-                        draw.text((tx, ty), label, fill=(0, 0, 0, 255))
+                        draw.text((tx, ty), label, fill=(10, 53, 85, 255))
                 img = base_img  # for coordinate capture
                 coords = streamlit_image_coordinates(img, key="meas_img", width=w)
                 if st.session_state['placement_mode'] and coords is not None and st.session_state.get('placing_process_idx') is not None:
