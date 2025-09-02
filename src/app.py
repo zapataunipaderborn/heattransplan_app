@@ -241,14 +241,14 @@ with left:
                     # Product parameters row
                     r1c1,r1c2,r1c3,r1c4 = st.columns([1,1,1,1])
                     p['conntemp'] = r1c1.text_input("Product Tin", value=p.get('conntemp',''), key=f"p_conntemp_{i}")
-                    p['product_tout'] = r1c2.text_input("P Tout", value=p.get('product_tout',''), key=f"p_ptout_{i}")
-                    p['connm'] = r1c3.text_input("P ṁ", value=p.get('connm',''), key=f"p_connm_{i}")
-                    p['conncp'] = r1c4.text_input("P cp", value=p.get('conncp',''), key=f"p_conncp_{i}")
+                    p['product_tout'] = r1c2.text_input("Product Tout", value=p.get('product_tout',''), key=f"p_ptout_{i}")
+                    p['connm'] = r1c3.text_input("Product ṁ", value=p.get('connm',''), key=f"p_connm_{i}")
+                    p['conncp'] = r1c4.text_input("Product cp", value=p.get('conncp',''), key=f"p_conncp_{i}")
 
                     # Coordinates & Next (Place button removed from this row)
                     r2c1,r2c2,r2c3 = st.columns([1,1,3])
-                    p['lat'] = r2c1.text_input("Lat", value=str(p.get('lat') or ''), key=f"p_lat_{i}")
-                    p['lon'] = r2c2.text_input("Lon", value=str(p.get('lon') or ''), key=f"p_lon_{i}")
+                    p['lat'] = r2c1.text_input("Latitude", value=str(p.get('lat') or ''), key=f"p_lat_{i}")
+                    p['lon'] = r2c2.text_input("Longitude", value=str(p.get('lon') or ''), key=f"p_lon_{i}")
                     p['next'] = r2c3.text_input("Next processes", value=p.get('next',''), key=f"p_next_{i}")
 
                     st.markdown("**Streams**")
