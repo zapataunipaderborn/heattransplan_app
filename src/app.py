@@ -194,23 +194,23 @@ with left:
                 exp_label = f"{i+1}. {p.get('name') or '(unnamed)'}"
                 with st.expander(exp_label, expanded=False):
                     # Row for main attributes
-                    # Added Product Tin (renamed from Conn Temp), new P Tout field, and relabeled mass & cp fields
-                    r1c1,r1c2,r1c3,r1c4,r1c5,r1c6,r1c7 = st.columns([2,1,1,1,1,1,0.6])
+                    # First row: core product parameters (Next moved to row 2 beside Place button)
+                    r1c1,r1c2,r1c3,r1c4,r1c5,r1c6 = st.columns([2,1,1,1,1,0.6])
                     p['name'] = r1c1.text_input("Name", value=p.get('name',''), key=f"p_name_{i}")
-                    p['next'] = r1c2.text_input("Next", value=p.get('next',''), key=f"p_next_{i}")
-                    p['conntemp'] = r1c3.text_input("Product Tin", value=p.get('conntemp',''), key=f"p_conntemp_{i}")
-                    # New product outlet temperature field (stored as 'product_tout')
-                    p['product_tout'] = r1c4.text_input("P Tout", value=p.get('product_tout',''), key=f"p_ptout_{i}")
-                    p['connm'] = r1c5.text_input("P ṁ", value=p.get('connm',''), key=f"p_connm_{i}")
-                    p['conncp'] = r1c6.text_input("P cp", value=p.get('conncp',''), key=f"p_conncp_{i}")
-                    if r1c7.button("del", key=f"del_proc_{i}"):
+                    p['conntemp'] = r1c2.text_input("Product Tin", value=p.get('conntemp',''), key=f"p_conntemp_{i}")
+                    # Product outlet temperature
+                    p['product_tout'] = r1c3.text_input("P Tout", value=p.get('product_tout',''), key=f"p_ptout_{i}")
+                    p['connm'] = r1c4.text_input("P ṁ", value=p.get('connm',''), key=f"p_connm_{i}")
+                    p['conncp'] = r1c5.text_input("P cp", value=p.get('conncp',''), key=f"p_conncp_{i}")
+                    if r1c6.button("del", key=f"del_proc_{i}"):
                         delete_process(st.session_state, i)
                         st.rerun()
                     # Row for coordinates + placement buttons
-                    r2c1,r2c2,r2c3,r2c4 = st.columns([1,1,1,1])
+                    r2c1,r2c2,r2c3,r2c4,r2c5 = st.columns([1,1,1,1,1])
                     p['lat'] = r2c1.text_input("Lat", value=str(p.get('lat') or ''), key=f"p_lat_{i}")
                     p['lon'] = r2c2.text_input("Lon", value=str(p.get('lon') or ''), key=f"p_lon_{i}")
                     place_active = st.session_state['placement_mode'] and st.session_state.get('placing_process_idx') == i
+                    # Place/Done button now third
                     if not place_active:
                         if r2c3.button("Place", key=f"place_{i}"):
                             st.session_state['placement_mode'] = True
@@ -220,7 +220,9 @@ with left:
                         if r2c3.button("Done", key=f"done_place_{i}"):
                             st.session_state['placement_mode'] = False
                             st.session_state['placing_process_idx'] = None
-                    r2c4.caption("Click snapshot to set")
+                    # 'Next' (renamed) now after Place button
+                    p['next'] = r2c4.text_input("Next processes", value=p.get('next',''), key=f"p_next_{i}")
+                    r2c5.caption("Click snapshot to set")
                     # Streams
                     st.markdown("**Streams**")
                     streams = p.get('streams', [])
