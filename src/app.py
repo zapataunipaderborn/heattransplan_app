@@ -190,26 +190,37 @@ with left:
     # Process & Stream UI (only show in Analyze mode to mimic original workflow)
     if mode == "Analyze":
         if st.session_state['processes']:
+            # Initialize expanded state tracker
+            if 'proc_expanded' not in st.session_state:
+                st.session_state['proc_expanded'] = []
+            if len(st.session_state['proc_expanded']) != len(st.session_state['processes']):
+                st.session_state['proc_expanded'] = [False]*len(st.session_state['processes'])
+
             for i, p in enumerate(st.session_state['processes']):
-                # Name input outside expander for better visibility / inline editing
-                p['name'] = st.text_input(f"{i+1}. Name", value=p.get('name',''), key=f"p_name_{i}")
-                exp_label = f"{i+1}. Details"
-                with st.expander(exp_label, expanded=False):
-                    # First row: product parameters (name removed)
-                    r1c1,r1c2,r1c3,r1c4,r1c5 = st.columns([1,1,1,1,0.6])
+                header_cols = st.columns([0.10, 0.05, 1.3, 0.12])  # toggle, spacer, name, delete
+                toggle_label = "▾" if st.session_state['proc_expanded'][i] else "▸"
+                if header_cols[0].button(toggle_label, key=f"proc_toggle_{i}"):
+                    st.session_state['proc_expanded'][i] = not st.session_state['proc_expanded'][i]
+                    st.rerun()
+                # name input in third column after spacer
+                p['name'] = header_cols[2].text_input(f"{i+1}. Name", value=p.get('name',''), key=f"p_name_{i}")
+                if header_cols[3].button("✕", key=f"del_proc_{i}"):
+                    delete_process(st.session_state, i)
+                    st.rerun()
+
+                if st.session_state['proc_expanded'][i]:
+                    # Product parameters row
+                    r1c1,r1c2,r1c3,r1c4 = st.columns([1,1,1,1])
                     p['conntemp'] = r1c1.text_input("Product Tin", value=p.get('conntemp',''), key=f"p_conntemp_{i}")
                     p['product_tout'] = r1c2.text_input("P Tout", value=p.get('product_tout',''), key=f"p_ptout_{i}")
                     p['connm'] = r1c3.text_input("P ṁ", value=p.get('connm',''), key=f"p_connm_{i}")
                     p['conncp'] = r1c4.text_input("P cp", value=p.get('conncp',''), key=f"p_conncp_{i}")
-                    if r1c5.button("✕", key=f"del_proc_{i}"):
-                        delete_process(st.session_state, i)
-                        st.rerun()
-                    # Row for coordinates + placement buttons
+
+                    # Coordinates / placement row
                     r2c1,r2c2,r2c3,r2c4 = st.columns([1,1,1,2])
                     p['lat'] = r2c1.text_input("Lat", value=str(p.get('lat') or ''), key=f"p_lat_{i}")
                     p['lon'] = r2c2.text_input("Lon", value=str(p.get('lon') or ''), key=f"p_lon_{i}")
                     place_active = st.session_state['placement_mode'] and st.session_state.get('placing_process_idx') == i
-                    # Place/Done button now third
                     if not place_active:
                         if r2c3.button("Place", key=f"place_{i}"):
                             st.session_state['placement_mode'] = True
@@ -219,13 +230,11 @@ with left:
                         if r2c3.button("Done", key=f"done_place_{i}"):
                             st.session_state['placement_mode'] = False
                             st.session_state['placing_process_idx'] = None
-                    # 'Next' (renamed) now after Place button
                     p['next'] = r2c4.text_input("Next processes", value=p.get('next',''), key=f"p_next_{i}")
-                    # Streams
+
                     st.markdown("**Streams**")
                     streams = p.get('streams', [])
                     if streams:
-                        # Existing streams editor rows
                         for si, s in enumerate(streams):
                             sc1,sc2,sc3,sc4,sc5 = st.columns([1,1,1,1,1])
                             s['mdot'] = sc1.text_input("ṁ", value=str(s.get('mdot','')), key=f"s_mdot_{i}_{si}")
