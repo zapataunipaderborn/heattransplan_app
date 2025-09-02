@@ -235,6 +235,9 @@ with left:
                 else:
                     current_names = current_names[:group_count]
                 st.session_state['proc_group_names'] = current_names
+            # Track group delete confirmation
+            if 'group_delete_pending' not in st.session_state:
+                st.session_state['group_delete_pending'] = None
 
             def _reindex_groups_after_delete(del_idx: int):
                 groups = st.session_state.get('proc_groups', [])
@@ -249,8 +252,8 @@ with left:
                 st.session_state['proc_groups'] = new_groups
 
             for g, g_list in enumerate(st.session_state['proc_groups']):
-                # Arrow (toggle) | Name (narrow) | Add process | Count
-                gh_cols = st.columns([0.06, 0.44, 0.25, 0.15])
+                # Arrow | Name | Add process | Count | Delete
+                gh_cols = st.columns([0.05, 0.40, 0.20, 0.10, 0.10])
                 g_toggle_label = "▾" if st.session_state['proc_group_expanded'][g] else "▸"
                 if gh_cols[0].button(g_toggle_label, key=f"group_toggle_{g}"):
                     st.session_state['proc_group_expanded'][g] = not st.session_state['proc_group_expanded'][g]
@@ -262,10 +265,36 @@ with left:
                     add_process(st.session_state)
                     new_idx = len(st.session_state['processes']) - 1
                     g_list.append(new_idx)
-                    st.session_state['proc_expanded'].append(True)
+                    # Ensure proc_expanded has entry and keep it collapsed
+                    if len(st.session_state['proc_expanded']) <= new_idx:
+                        st.session_state['proc_expanded'].append(False)
+                    else:
+                        st.session_state['proc_expanded'][new_idx] = False
                     st.session_state['ui_status_msg'] = f"Added process to {st.session_state['proc_group_names'][g]}"
                     st.rerun()
                 gh_cols[3].markdown(f"**{len(g_list)}**")
+                pending_group = st.session_state.get('group_delete_pending')
+                with gh_cols[4]:
+                    if pending_group == g:
+                        st.write("Sure?")
+                        if st.button("✅", key=f"confirm_del_group_{g}"):
+                            # Delete all processes in group (highest index first)
+                            for pi in sorted(g_list, reverse=True):
+                                delete_process(st.session_state, pi)
+                                _reindex_groups_after_delete(pi)
+                            # Remove group metadata
+                            st.session_state['proc_groups'].pop(g)
+                            st.session_state['proc_group_names'].pop(g)
+                            st.session_state['proc_group_expanded'].pop(g)
+                            st.session_state['group_delete_pending'] = None
+                            st.session_state['ui_status_msg'] = "Group deleted"
+                            st.rerun()
+                        if st.button("❌", key=f"cancel_del_group_{g}"):
+                            st.session_state['group_delete_pending'] = None
+                    else:
+                        if st.button("✕", key=f"del_group_{g}"):
+                            st.session_state['group_delete_pending'] = g
+                            st.rerun()
 
                 if not st.session_state['proc_group_expanded'][g]:
                     continue
@@ -314,7 +343,7 @@ with left:
                             if st.button("❌", key=f"cancel_del_{i}"):
                                 st.session_state['proc_delete_pending'] = None
                     else:
-                        if header_cols[3].button("❌", key=f"del_proc_{i}"):
+                        if header_cols[3].button("✕", key=f"del_proc_{i}"):
                             st.session_state['proc_delete_pending'] = i
                             st.rerun()
 
