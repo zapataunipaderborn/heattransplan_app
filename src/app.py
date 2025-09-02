@@ -202,7 +202,7 @@ with left:
                     p['product_tout'] = r1c3.text_input("P Tout", value=p.get('product_tout',''), key=f"p_ptout_{i}")
                     p['connm'] = r1c4.text_input("P ṁ", value=p.get('connm',''), key=f"p_connm_{i}")
                     p['conncp'] = r1c5.text_input("P cp", value=p.get('conncp',''), key=f"p_conncp_{i}")
-                    if r1c6.button("del", key=f"del_proc_{i}"):
+                    if r1c6.button("✕", key=f"del_proc_{i}"):
                         delete_process(st.session_state, i)
                         st.rerun()
                     # Row for coordinates + placement buttons
