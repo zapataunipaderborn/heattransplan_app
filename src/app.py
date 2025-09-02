@@ -182,115 +182,183 @@ with left:
                 'ui_status_msg': None,
             })
             st.rerun()
-        if col_add.button("Add Process", key="btn_add_process_top"):
-            add_process(st.session_state)
-            st.session_state['ui_status_msg'] = "Added blank process"
+        if col_add.button("Add group of processes", key="btn_add_group_top"):
+            # Ensure groups list exists
+            if 'proc_groups' not in st.session_state:
+                st.session_state['proc_groups'] = []
+            st.session_state['proc_groups'].append([])  # new empty group
+            # Sync group names & expansion
+            if 'proc_group_names' not in st.session_state:
+                st.session_state['proc_group_names'] = []
+            st.session_state['proc_group_names'].append(f"Group {len(st.session_state['proc_groups'])}")
+            if 'proc_group_expanded' not in st.session_state:
+                st.session_state['proc_group_expanded'] = []
+            st.session_state['proc_group_expanded'].append(True)
+            st.session_state['ui_status_msg'] = "Added new empty group"
             st.rerun()
     mode = st.session_state['ui_mode_radio']
     # Process & Stream UI (only show in Analyze mode to mimic original workflow)
     if mode == "Analyze":
-        if st.session_state['processes']:
+        # Show editor if we have any processes OR any groups (even empty groups)
+        has_groups = bool(st.session_state.get('proc_groups'))
+        if st.session_state['processes'] or has_groups:
             # Initialize expanded state tracker
             if 'proc_expanded' not in st.session_state:
                 st.session_state['proc_expanded'] = []
-            if len(st.session_state['proc_expanded']) != len(st.session_state['processes']):
-                st.session_state['proc_expanded'] = [False]*len(st.session_state['processes'])
+            # Preserve existing flags; extend or truncate only as needed
+            if len(st.session_state['proc_expanded']) < len(st.session_state['processes']):
+                st.session_state['proc_expanded'].extend([False]*(len(st.session_state['processes']) - len(st.session_state['proc_expanded'])))
+            elif len(st.session_state['proc_expanded']) > len(st.session_state['processes']):
+                st.session_state['proc_expanded'] = st.session_state['proc_expanded'][:len(st.session_state['processes'])]
             # Track pending delete index
             if 'proc_delete_pending' not in st.session_state:
                 st.session_state['proc_delete_pending'] = None
 
-            for i, p in enumerate(st.session_state['processes']):
-                if i > 0:
-                    st.markdown("<hr style='margin:0.4rem 0 0.8rem 0; border:0; border-top:1px solid #bbb;' />", unsafe_allow_html=True)
-                # Header: toggle | spacer | name | place/done | delete
-                header_cols = st.columns([0.08, 0.04, 0.75, 0.32, 0.16])  # widened last column for confirmation buttons
-                toggle_label = "▾" if st.session_state['proc_expanded'][i] else "▸"
-                if header_cols[0].button(toggle_label, key=f"proc_toggle_{i}"):
-                    st.session_state['proc_expanded'][i] = not st.session_state['proc_expanded'][i]
-                    st.rerun()
-                p['name'] = header_cols[2].text_input(f"{i+1}. Name", value=p.get('name',''), key=f"p_name_{i}")
-                # Place / Done button now in header
-                place_active = (st.session_state['placement_mode'] and 
-                                st.session_state.get('placing_process_idx') == i)
-                if not place_active:
-                    if header_cols[3].button("Place", key=f"place_{i}"):
-                        st.session_state['placement_mode'] = True
-                        st.session_state['measure_mode'] = False
-                        st.session_state['placing_process_idx'] = i
-                        st.rerun()
+            # Initialize explicit groups if not present
+            if 'proc_groups' not in st.session_state:
+                st.session_state['proc_groups'] = [list(range(len(st.session_state['processes'])))] if st.session_state['processes'] else []
+            # Ensure proc_expanded length matches processes
+            if len(st.session_state['proc_expanded']) != len(st.session_state['processes']):
+                st.session_state['proc_expanded'] = [False]*len(st.session_state['processes'])
+            # Align names & expanded arrays to group list length
+            group_count = len(st.session_state['proc_groups'])
+            if 'proc_group_expanded' not in st.session_state:
+                st.session_state['proc_group_expanded'] = [True]*group_count
+            elif len(st.session_state['proc_group_expanded']) != group_count:
+                st.session_state['proc_group_expanded'] = [st.session_state['proc_group_expanded'][g] if g < len(st.session_state['proc_group_expanded']) else True for g in range(group_count)]
+            if 'proc_group_names' not in st.session_state:
+                st.session_state['proc_group_names'] = [f"Group {g+1}" for g in range(group_count)]
+            elif len(st.session_state['proc_group_names']) != group_count:
+                current_names = st.session_state['proc_group_names']
+                if len(current_names) < group_count:
+                    current_names += [f"Group {g+1}" for g in range(len(current_names), group_count)]
                 else:
-                    if header_cols[3].button("Done", key=f"done_place_{i}"):
-                        st.session_state['placement_mode'] = False
-                        st.session_state['placing_process_idx'] = None
+                    current_names = current_names[:group_count]
+                st.session_state['proc_group_names'] = current_names
+
+            def _reindex_groups_after_delete(del_idx: int):
+                groups = st.session_state.get('proc_groups', [])
+                new_groups = []
+                for g_list in groups:
+                    updated = []
+                    for pi in g_list:
+                        if pi == del_idx:
+                            continue
+                        updated.append(pi - 1 if pi > del_idx else pi)
+                    new_groups.append(updated)
+                st.session_state['proc_groups'] = new_groups
+
+            for g, g_list in enumerate(st.session_state['proc_groups']):
+                gh_cols = st.columns([0.55, 0.25, 0.20])
+                with gh_cols[0]:
+                    default_name = st.session_state['proc_group_names'][g]
+                    new_name = st.text_input("Group name", value=default_name, key=f"group_name_{g}", label_visibility="collapsed", placeholder=f"Group {g+1}")
+                    st.session_state['proc_group_names'][g] = new_name.strip() or default_name
+                    g_toggle_label = "▾" if st.session_state['proc_group_expanded'][g] else "▸"
+                    if st.button(g_toggle_label, key=f"group_toggle_{g}"):
+                        st.session_state['proc_group_expanded'][g] = not st.session_state['proc_group_expanded'][g]
                         st.rerun()
-                # Delete with confirmation
-                pending = st.session_state.get('proc_delete_pending')
-                if pending == i:
-                    with header_cols[4]:
-                        st.write("Sure?")
-                        if st.button("✅", key=f"confirm_del_{i}"):
-                            delete_process(st.session_state, i)
-                            st.session_state['proc_delete_pending'] = None
-                            st.rerun()
-                        if st.button("❌", key=f"cancel_del_{i}"):
-                            st.session_state['proc_delete_pending'] = None
-                else:
-                    if header_cols[4].button("❌", key=f"del_proc_{i}"):
-                        st.session_state['proc_delete_pending'] = i
+                with gh_cols[1]:
+                    if st.button("Add process", key=f"add_proc_group_{g}"):
+                        add_process(st.session_state)
+                        new_idx = len(st.session_state['processes']) - 1
+                        g_list.append(new_idx)
+                        st.session_state['proc_expanded'].append(True)
+                        st.session_state['ui_status_msg'] = f"Added process to {st.session_state['proc_group_names'][g]}"
                         st.rerun()
+                with gh_cols[2]:
+                    st.markdown(f"**{len(g_list)}**")
 
-                if st.session_state['proc_expanded'][i]:
-                    # Product parameters row
-                    r1c1,r1c2,r1c3,r1c4 = st.columns([1,1,1,1])
-                    p['conntemp'] = r1c1.text_input("Product Tin", value=p.get('conntemp',''), key=f"p_conntemp_{i}")
-                    p['product_tout'] = r1c2.text_input("Product Tout", value=p.get('product_tout',''), key=f"p_ptout_{i}")
-                    p['connm'] = r1c3.text_input("Product ṁ", value=p.get('connm',''), key=f"p_connm_{i}")
-                    p['conncp'] = r1c4.text_input("Product cp", value=p.get('conncp',''), key=f"p_conncp_{i}")
+                if not st.session_state['proc_group_expanded'][g]:
+                    continue
 
-                    # Coordinates & Next (Place button removed from this row)
-                    r2c1,r2c2,r2c3 = st.columns([1,1,3])
-                    p['lat'] = r2c1.text_input("Latitude", value=str(p.get('lat') or ''), key=f"p_lat_{i}")
-                    p['lon'] = r2c2.text_input("Longitude", value=str(p.get('lon') or ''), key=f"p_lon_{i}")
-                    p['next'] = r2c3.text_input("Next processes", value=p.get('next',''), key=f"p_next_{i}")
-
-                    st.markdown("**Streams**")
-                    streams = p.get('streams', [])
-                    if streams:
-                        for si, s in enumerate(streams):
-                            sc1,sc2,sc3,sc4,sc5 = st.columns([1,1,1,1,1])
-                            s['temp_in'] = sc1.text_input("Tin", value=str(s.get('temp_in','')), key=f"s_tin_{i}_{si}")
-                            s['temp_out'] = sc2.text_input("Tout", value=str(s.get('temp_out','')), key=f"s_tout_{i}_{si}")
-                            s['mdot'] = sc3.text_input("ṁ", value=str(s.get('mdot','')), key=f"s_mdot_{i}_{si}")
-                            s['cp'] = sc4.text_input("cp", value=str(s.get('cp','')), key=f"s_cp_{i}_{si}")
-                            if sc5.button("✕", key=f"del_stream_{i}_{si}"):
-                                delete_stream_from_process(st.session_state, i, si)
-                                st.rerun()
-                        # New stream input row only when at least one already exists
-                        as1,as2,as3,as4,as5 = st.columns([1,1,1,1,1])
-                        new_tin = as1.text_input("Tin", key=f"new_tin_{i}")
-                        new_tout = as2.text_input("Tout", key=f"new_tout_{i}")
-                        new_mdot = as3.text_input("ṁ", key=f"new_mdot_{i}")
-                        new_cp = as4.text_input("cp", key=f"new_cp_{i}")
-                        if as5.button("Add", key=f"btn_add_stream_{i}"):
-                            add_stream_to_process(st.session_state, i)
-                            st.session_state['processes'][i]['streams'][-1].update({
-                                'temp_in': new_tin,
-                                'temp_out': new_tout,
-                                'mdot': new_mdot,
-                                'cp': new_cp,
-                            })
+                if not g_list:
+                    st.caption("(No processes in this group)")
+                for i in g_list:
+                    p = st.session_state['processes'][i]
+                    # Per-process header
+                    header_cols = st.columns([0.08, 0.04, 0.75, 0.32, 0.16])
+                    toggle_label = "▾" if st.session_state['proc_expanded'][i] else "▸"
+                    if header_cols[0].button(toggle_label, key=f"proc_toggle_{i}"):
+                        st.session_state['proc_expanded'][i] = not st.session_state['proc_expanded'][i]
+                        st.rerun()
+                    p['name'] = header_cols[2].text_input(f"{i+1}. Name", value=p.get('name',''), key=f"p_name_{i}")
+                    place_active = (st.session_state['placement_mode'] and st.session_state.get('placing_process_idx') == i)
+                    if not place_active:
+                        if header_cols[3].button("Place", key=f"place_{i}"):
+                            st.session_state['placement_mode'] = True
+                            st.session_state['measure_mode'] = False
+                            st.session_state['placing_process_idx'] = i
                             st.rerun()
                     else:
-                        # Inline 'No streams yet.' with Add button
-                        nc1, nc2 = st.columns([4,1])
-                        with nc1:
-                            st.caption("No streams yet.")
-                        with nc2:
-                            if st.button("Add", key=f"btn_add_first_stream_{i}"):
-                                add_stream_to_process(st.session_state, i)
+                        if header_cols[3].button("Done", key=f"done_place_{i}"):
+                            st.session_state['placement_mode'] = False
+                            st.session_state['placing_process_idx'] = None
+                            st.rerun()
+                    pending = st.session_state.get('proc_delete_pending')
+                    if pending == i:
+                        with header_cols[4]:
+                            st.write("Sure?")
+                            if st.button("✅", key=f"confirm_del_{i}"):
+                                delete_process(st.session_state, i)
+                                _reindex_groups_after_delete(i)
+                                st.session_state['proc_delete_pending'] = None
                                 st.rerun()
+                            if st.button("❌", key=f"cancel_del_{i}"):
+                                st.session_state['proc_delete_pending'] = None
+                    else:
+                        if header_cols[4].button("❌", key=f"del_proc_{i}"):
+                            st.session_state['proc_delete_pending'] = i
+                            st.rerun()
+
+                    if st.session_state['proc_expanded'][i]:
+                        r1c1,r1c2,r1c3,r1c4 = st.columns([1,1,1,1])
+                        p['conntemp'] = r1c1.text_input("Product Tin", value=p.get('conntemp',''), key=f"p_conntemp_{i}")
+                        p['product_tout'] = r1c2.text_input("Product Tout", value=p.get('product_tout',''), key=f"p_ptout_{i}")
+                        p['connm'] = r1c3.text_input("Product ṁ", value=p.get('connm',''), key=f"p_connm_{i}")
+                        p['conncp'] = r1c4.text_input("Product cp", value=p.get('conncp',''), key=f"p_conncp_{i}")
+
+                        r2c1,r2c2,r2c3 = st.columns([1,1,3])
+                        p['lat'] = r2c1.text_input("Latitude", value=str(p.get('lat') or ''), key=f"p_lat_{i}")
+                        p['lon'] = r2c2.text_input("Longitude", value=str(p.get('lon') or ''), key=f"p_lon_{i}")
+                        p['next'] = r2c3.text_input("Next processes", value=p.get('next',''), key=f"p_next_{i}")
+
+                        st.markdown("**Streams**")
+                        streams = p.get('streams', [])
+                        if streams:
+                            for si, s in enumerate(streams):
+                                sc1,sc2,sc3,sc4,sc5 = st.columns([1,1,1,1,1])
+                                s['temp_in'] = sc1.text_input("Tin", value=str(s.get('temp_in','')), key=f"s_tin_{i}_{si}")
+                                s['temp_out'] = sc2.text_input("Tout", value=str(s.get('temp_out','')), key=f"s_tout_{i}_{si}")
+                                s['mdot'] = sc3.text_input("ṁ", value=str(s.get('mdot','')), key=f"s_mdot_{i}_{si}")
+                                s['cp'] = sc4.text_input("cp", value=str(s.get('cp','')), key=f"s_cp_{i}_{si}")
+                                if sc5.button("✕", key=f"del_stream_{i}_{si}"):
+                                    delete_stream_from_process(st.session_state, i, si)
+                                    st.rerun()
+                            as1,as2,as3,as4,as5 = st.columns([1,1,1,1,1])
+                            new_tin = as1.text_input("Tin", key=f"new_tin_{i}")
+                            new_tout = as2.text_input("Tout", key=f"new_tout_{i}")
+                            new_mdot = as3.text_input("ṁ", key=f"new_mdot_{i}")
+                            new_cp = as4.text_input("cp", key=f"new_cp_{i}")
+                            if as5.button("Add", key=f"btn_add_stream_{i}"):
+                                add_stream_to_process(st.session_state, i)
+                                st.session_state['processes'][i]['streams'][-1].update({
+                                    'temp_in': new_tin,
+                                    'temp_out': new_tout,
+                                    'mdot': new_mdot,
+                                    'cp': new_cp,
+                                })
+                                st.rerun()
+                        else:
+                            nc1, nc2 = st.columns([4,1])
+                            with nc1:
+                                st.caption("No streams yet.")
+                            with nc2:
+                                if st.button("Add", key=f"btn_add_first_stream_{i}"):
+                                    add_stream_to_process(st.session_state, i)
+                                    st.rerun()
         else:
-            st.info("No processes yet in this session.")
+            st.info("No groups yet. Use 'Add group of processes' to start.")
     else:
         # Provide a summary of existing processes while selecting map
         if st.session_state['processes']:
