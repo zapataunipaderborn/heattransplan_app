@@ -133,6 +133,16 @@ if 'map_center' not in st.session_state: st.session_state['map_center'] = DEFAUL
 if 'map_zoom' not in st.session_state: st.session_state['map_zoom'] = 17.5          # committed (locked) zoom
 if 'selector_center' not in st.session_state: st.session_state['selector_center'] = st.session_state['map_center'][:]
 if 'selector_zoom' not in st.session_state: st.session_state['selector_zoom'] = st.session_state['map_zoom']
+# Initialize address input explicitly (prevents KeyError after widget key changes)
+if 'address_input' not in st.session_state:
+    st.session_state['address_input'] = ''
+# Clean orphaned internal widget state keys left from layout changes (optional safeguard)
+for _k in list(st.session_state.keys()):
+    if isinstance(_k, str) and _k.startswith('$$WIDGET_ID-'):
+        try:
+            del st.session_state[_k]
+        except KeyError:
+            pass
 # Track mode separately (avoid writing to widget key after creation)
 if 'ui_mode_radio' not in st.session_state: st.session_state['ui_mode_radio'] = 'Select Map'
 if 'measure_mode' not in st.session_state: st.session_state['measure_mode'] = False
