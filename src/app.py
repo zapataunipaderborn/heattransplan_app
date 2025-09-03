@@ -61,7 +61,7 @@ def snapshot_lonlat_to_pixel(lon_val_in, lat_val_in, center_ll, z_level, img_w, 
     snapshot_py = img_h / 2 + dytile * px_per_tile
     return snapshot_px, snapshot_py
 
-st.set_page_config(page_title="Process Analysis", layout="wide")
+st.set_page_config(page_title="Heat Integration analysis", layout="wide")
 
 # Compact top padding & utility CSS to keep map tight to top-right
 st.markdown("""
@@ -115,10 +115,11 @@ div.streamlit-expanderHeader {padding:0.3rem 0.5rem !important;}
 </style>
 """, unsafe_allow_html=True)
 
-st.title("Process Analysis App (Streamlit)")
+st.markdown("<div style='height:22px'></div>", unsafe_allow_html=True)
+st.title("Heat Integration analysis")
 
-MAP_WIDTH = 1300  # increased for wider map & snapshot
-MAP_HEIGHT = 720  # taller snapshot for better visibility
+MAP_WIDTH = 1500  # widened map (extends to the right)
+MAP_HEIGHT = 860  # taller snapshot for more vertical space
 
 # Default start location (Universität Paderborn, Warburger Str. 100, 33098 Paderborn)
 DEFAULT_START_ADDRESS = "Universität Paderborn, Warburger Str. 100, 33098 Paderborn"
