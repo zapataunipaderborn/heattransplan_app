@@ -469,8 +469,8 @@ with left:
 with right:
     # mode already selected on left
     if mode == "Select Map":
-        # Address search row (locking handled by top button now)
-        addr_col, btn_col, info_col = st.columns([5,1,2])
+        # Address & base selection row
+        addr_col, btn_col, info_col, base_col = st.columns([5,1,2,2])
         address = addr_col.text_input("Search address", key="address_input")
         if btn_col.button("Search", key="search_button") and address:
             url = f"https://nominatim.openstreetmap.org/search?q={address}&format=json&limit=1"
@@ -488,153 +488,141 @@ with right:
             except requests.exceptions.RequestException as req_err:
                 st.error(f"Search failed: {req_err}")
         info_col.caption("When ready, press 'Lock map and analyze'.")
-
-        # Layout: map + slim control column on the right
-        map_col, ctrl_col = st.columns([40, 2])
-        with ctrl_col:
-            st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-            st.markdown("<div style='font-size:12px; font-weight:600; margin-bottom:2px;'>Base</div>", unsafe_allow_html=True)
-            _map_base = st.selectbox(
-                label="Base layer",
-                options=["OpenStreetMap", "Positron", "Satellite"],
-                index=["OpenStreetMap", "Positron", "Satellite"].index(st.session_state['current_base']),
-                key='map_base_selector',
-                label_visibility='collapsed'
-            )
-            if _map_base != st.session_state['current_base']:
-                st.session_state['current_base'] = _map_base
-            st.markdown("""
+        # Base layer selector placed in same top row
+        base_col.markdown("<div style='font-size:12px; font-weight:600; margin-bottom:2px;'>Base</div>", unsafe_allow_html=True)
+        _map_base = base_col.selectbox(
+            label="Base layer",
+            options=["OpenStreetMap", "Positron", "Satellite"],
+            index=["OpenStreetMap", "Positron", "Satellite"].index(st.session_state['current_base']),
+            key='map_base_selector',
+            label_visibility='collapsed'
+        )
+        if _map_base != st.session_state['current_base']:
+            st.session_state['current_base'] = _map_base
+        st.markdown("""
 <style>
-/* Compact selectbox just in this column (affects first child) */
-div[data-testid="stVerticalBlock"] > div div[data-baseweb="select"] {min-height:32px;}
-div[data-testid="stVerticalBlock"] > div div[data-baseweb="select"] * {font-size:11px;}
-div[data-testid="stVerticalBlock"] > div div[data-baseweb="select"] div[role="combobox"] {padding:2px 6px;}
+/* Compact selectboxes */
+div[data-testid=\"stVerticalBlock\"] > div div[data-baseweb=\"select\"] {min-height:32px;}
+div[data-testid=\"stVerticalBlock\"] > div div[data-baseweb=\"select\"] * {font-size:11px;}
+div[data-testid=\"stVerticalBlock\"] > div div[data-baseweb=\"select\"] div[role=\"combobox\"] {padding:2px 6px;}
 </style>
 """, unsafe_allow_html=True)
-            selected_base = st.session_state.get('current_base', 'OpenStreetMap')
-            with map_col:
-                # Build map with only the chosen base layer
-                if selected_base == 'Satellite':
-                    fmap = folium.Map(location=st.session_state['selector_center'], zoom_start=st.session_state['selector_zoom'], tiles=None)
-                    folium.TileLayer(
-                        tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-                        attr='Esri WorldImagery',
-                        name='Satellite'
-                    ).add_to(fmap)
-                elif selected_base == 'Positron':
-                    fmap = folium.Map(location=st.session_state['selector_center'], zoom_start=st.session_state['selector_zoom'], tiles='CartoDB positron')
-                else:
-                    fmap = folium.Map(location=st.session_state['selector_center'], zoom_start=st.session_state['selector_zoom'], tiles='OpenStreetMap')
-                # Feature groups for overlays (indent aligned with map_col context)
-                process_fg = folium.FeatureGroup(name='Processes', show=True)
-                connection_fg = folium.FeatureGroup(name='Connections', show=True)
-                # Overlay processes as styled DivIcon 'boxes'
-                for idx, p in enumerate(st.session_state['processes']):
-                    lat = p.get('lat'); lon = p.get('lon')
-                    if lat not in (None, "") and lon not in (None, ""):
-                        try:
-                            label = p.get('name') or f"P{idx+1}"
-                            html = f"""<div style='background:#e0f2ff;border:2px solid #1769aa;padding:5px 10px;font-size:15px;font-weight:600;color:#0a3555;border-radius:6px;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,0.35);'>📦 {label}</div>"""
-                            folium.Marker(
-                                [float(lat), float(lon)],
-                                tooltip=label,
-                                popup=f"<b>{label}</b><br>Next: {p.get('next','')}",
-                                icon=folium.DivIcon(html=html)
-                            ).add_to(process_fg)
-                        except (ValueError, TypeError):
-                            pass
-                # Draw connection lines according to 'next' fields (requires coordinates for both ends)
-                # Build lookup by lowercase name and also index mapping
-                name_lookup = {}
-                coord_by_idx = {}
-                for idx, p in enumerate(st.session_state['processes']):
-                    lat = p.get('lat'); lon = p.get('lon')
+        selected_base = st.session_state.get('current_base', 'OpenStreetMap')
+        # Single wide map container below controls
+        map_col = st.container()
+        with map_col:
+            # Build map with only the chosen base layer
+            if selected_base == 'Satellite':
+                fmap = folium.Map(location=st.session_state['selector_center'], zoom_start=st.session_state['selector_zoom'], tiles=None)
+                folium.TileLayer(
+                    tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+                    attr='Esri WorldImagery',
+                    name='Satellite'
+                ).add_to(fmap)
+            elif selected_base == 'Positron':
+                fmap = folium.Map(location=st.session_state['selector_center'], zoom_start=st.session_state['selector_zoom'], tiles='CartoDB positron')
+            else:
+                fmap = folium.Map(location=st.session_state['selector_center'], zoom_start=st.session_state['selector_zoom'], tiles='OpenStreetMap')
+            # Feature groups for overlays
+            process_fg = folium.FeatureGroup(name='Processes', show=True)
+            connection_fg = folium.FeatureGroup(name='Connections', show=True)
+            for idx, p in enumerate(st.session_state['processes']):
+                lat = p.get('lat'); lon = p.get('lon')
+                if lat not in (None, "") and lon not in (None, ""):
                     try:
-                        if lat not in (None, "", "None") and lon not in (None, "", "None"):
-                            lat_f = float(lat); lon_f = float(lon)
-                            coord_by_idx[idx] = (lat_f, lon_f)
-                            nm = (p.get('name') or f"P{idx+1}").strip().lower()
-                            if nm:
-                                name_lookup.setdefault(nm, []).append(idx)
+                        label = p.get('name') or f"P{idx+1}"
+                        html = f"""<div style='background:#e0f2ff;border:2px solid #1769aa;padding:5px 10px;font-size:15px;font-weight:600;color:#0a3555;border-radius:6px;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,0.35);'>📦 {label}</div>"""
+                        folium.Marker(
+                            [float(lat), float(lon)],
+                            tooltip=label,
+                            popup=f"<b>{label}</b><br>Next: {p.get('next','')}",
+                            icon=folium.DivIcon(html=html)
+                        ).add_to(process_fg)
                     except (ValueError, TypeError):
-                        continue
-                def _parse_targets(raw_targets):
-                    if not raw_targets:
-                        return []
-                    tokens = []
-                    for raw_piece in raw_targets.replace(';', ',').replace('|', ',').split(','):
-                        tkn = raw_piece.strip()
-                        if tkn:
-                            tokens.append(tkn)
-                    return tokens
-                for src_idx, p in enumerate(st.session_state['processes']):
-                    if src_idx not in coord_by_idx:
-                        continue
-                    raw_next = p.get('next', '') or ''
-                    for next_token in _parse_targets(raw_next):
-                        # numeric index (1-based)
-                        tgt_indices = []
-                        if next_token.isdigit():
-                            val = int(next_token) - 1
-                            if val in coord_by_idx:
-                                tgt_indices.append(val)
-                        else:
-                            lname_lookup = next_token.lower()
-                            tgt_indices.extend(name_lookup.get(lname_lookup, []))
-                        for tgt_idx in tgt_indices:
-                            if tgt_idx == src_idx:
-                                continue
-                            lat1, lon1 = coord_by_idx[src_idx]
-                            lat2, lon2 = coord_by_idx[tgt_idx]
-                            try:
-                                # Main line
-                                folium.PolyLine([(lat1, lon1), (lat2, lon2)], color='#000000', weight=3, opacity=0.9).add_to(connection_fg)
-                                # Arrowhead (small DivIcon slightly before target)
-                                import math as _math_inner
-                                dlat = lat2 - lat1; dlon = lon2 - lon1
-                                if abs(dlat) + abs(dlon) > 0:
-                                    arrow_lat = lat2 - dlat * 0.12
-                                    arrow_lon = lon2 - dlon * 0.12
-                                    ang_deg = _math_inner.degrees(_math_inner.atan2(dlat, dlon))
-                                    arrow_html = f"""<div style='transform:translate(-50%,-50%) rotate({ang_deg}deg);font-size:22px;line-height:20px;color:#000000;font-weight:700;'>➤</div>"""
-                                    folium.Marker([arrow_lat, arrow_lon], icon=folium.DivIcon(html=arrow_html), tooltip="").add_to(connection_fg)
-                            except (ValueError, TypeError):
-                                pass  # skip invalid
-                # Add feature groups & layer control
-                process_fg.add_to(fmap)
-                connection_fg.add_to(fmap)
-                # Render map (no layer control now)
-                fmap_data = st_folium(
-                    fmap,
-                    key="selector_map",
-                    width=MAP_WIDTH,
-                    height=MAP_HEIGHT,
-                    returned_objects=["center","zoom","last_clicked"],
-                    use_container_width=False
-                )
-                # Update placement if in placing mode and user clicked
-                if (
-                    st.session_state.get('placing_process_idx') is not None and
-                    fmap_data and fmap_data.get('last_clicked')
-                ):
-                    click = fmap_data['last_clicked']
-                    lat = click.get('lat'); lon = click.get('lng')
-                    if lat is not None and lon is not None:
+                        pass
+            name_lookup = {}
+            coord_by_idx = {}
+            for idx, p in enumerate(st.session_state['processes']):
+                lat = p.get('lat'); lon = p.get('lon')
+                try:
+                    if lat not in (None, "", "None") and lon not in (None, "", "None"):
+                        lat_f = float(lat); lon_f = float(lon)
+                        coord_by_idx[idx] = (lat_f, lon_f)
+                        nm = (p.get('name') or f"P{idx+1}").strip().lower()
+                        if nm:
+                            name_lookup.setdefault(nm, []).append(idx)
+                except (ValueError, TypeError):
+                    continue
+            def _parse_targets(raw_targets):
+                if not raw_targets:
+                    return []
+                tokens = []
+                for raw_piece in raw_targets.replace(';', ',').replace('|', ',').split(','):
+                    tkn = raw_piece.strip()
+                    if tkn:
+                        tokens.append(tkn)
+                return tokens
+            for src_idx, p in enumerate(st.session_state['processes']):
+                if src_idx not in coord_by_idx:
+                    continue
+                raw_next = p.get('next', '') or ''
+                for next_token in _parse_targets(raw_next):
+                    tgt_indices = []
+                    if next_token.isdigit():
+                        val = int(next_token) - 1
+                        if val in coord_by_idx:
+                            tgt_indices.append(val)
+                    else:
+                        lname_lookup = next_token.lower()
+                        tgt_indices.extend(name_lookup.get(lname_lookup, []))
+                    for tgt_idx in tgt_indices:
+                        if tgt_idx == src_idx:
+                            continue
+                        lat1, lon1 = coord_by_idx[src_idx]
+                        lat2, lon2 = coord_by_idx[tgt_idx]
                         try:
-                            pidx = st.session_state['placing_process_idx']
-                            st.session_state['processes'][pidx]['lat'] = round(float(lat), 6)
-                            st.session_state['processes'][pidx]['lon'] = round(float(lon), 6)
+                            folium.PolyLine([(lat1, lon1), (lat2, lon2)], color='#000000', weight=3, opacity=0.9).add_to(connection_fg)
+                            import math as _math_inner
+                            dlat = lat2 - lat1; dlon = lon2 - lon1
+                            if abs(dlat) + abs(dlon) > 0:
+                                arrow_lat = lat2 - dlat * 0.12
+                                arrow_lon = lon2 - dlon * 0.12
+                                ang_deg = _math_inner.degrees(_math_inner.atan2(dlat, dlon))
+                                arrow_html = f"""<div style='transform:translate(-50%,-50%) rotate({ang_deg}deg);font-size:22px;line-height:20px;color:#000000;font-weight:700;'>➤</div>"""
+                                folium.Marker([arrow_lat, arrow_lon], icon=folium.DivIcon(html=arrow_html), tooltip="").add_to(connection_fg)
                         except (ValueError, TypeError):
                             pass
-                        # keep placing mode active until user clicks Done
-                if fmap_data and 'center' in fmap_data and 'zoom' in fmap_data:
-                    c = fmap_data['center']
-                    if isinstance(c, dict):
-                        st.session_state['selector_center'] = [c['lat'], c['lng']]
-                    else:
-                        st.session_state['selector_center'] = c
-                    st.session_state['selector_zoom'] = fmap_data['zoom']
-                st.caption("Pan/zoom, then click 'Lock map and analyze' to capture a snapshot.")
+            process_fg.add_to(fmap)
+            connection_fg.add_to(fmap)
+            fmap_data = st_folium(
+                fmap,
+                key="selector_map",
+                width=MAP_WIDTH,
+                height=MAP_HEIGHT,
+                returned_objects=["center","zoom","last_clicked"],
+                use_container_width=False
+            )
+            if (
+                st.session_state.get('placing_process_idx') is not None and
+                fmap_data and fmap_data.get('last_clicked')
+            ):
+                click = fmap_data['last_clicked']
+                lat = click.get('lat'); lon = click.get('lng')
+                if lat is not None and lon is not None:
+                    try:
+                        pidx = st.session_state['placing_process_idx']
+                        st.session_state['processes'][pidx]['lat'] = round(float(lat), 6)
+                        st.session_state['processes'][pidx]['lon'] = round(float(lon), 6)
+                    except (ValueError, TypeError):
+                        pass
+            if fmap_data and 'center' in fmap_data and 'zoom' in fmap_data:
+                c = fmap_data['center']
+                if isinstance(c, dict):
+                    st.session_state['selector_center'] = [c['lat'], c['lng']]
+                else:
+                    st.session_state['selector_center'] = c
+                st.session_state['selector_zoom'] = fmap_data['zoom']
+            st.caption("Pan/zoom, then click 'Lock map and analyze' to capture a snapshot.")
     else:
         # Analysis mode
         if not st.session_state['map_locked']:
@@ -642,7 +630,7 @@ div[data-testid="stVerticalBlock"] > div div[data-baseweb="select"] div[role="co
         else:
             # In Analyze mode on right column proceed with snapshot tools below
             # --- Top action/status bar ---
-            top_c1, top_c2, top_c3 = st.columns([3,2,2])
+            top_c1, top_c2, top_c3, top_c4 = st.columns([3,2,2,2])
             with top_c1:
                 # Decide dynamic status message (priority: placing > measuring > last action > default)
                 placing_idx = st.session_state.get('placing_process_idx')
@@ -675,7 +663,18 @@ div[data-testid="stVerticalBlock"] > div div[data-baseweb="select"] div[role="co
                         st.session_state['measure_points'] = []
                         st.session_state['measure_distance_m'] = None
             with top_c3:
-                st.empty()  # no separate unlock button now
+                st.empty()  # spacer
+            with top_c4:
+                st.markdown("<div style='font-size:12px; font-weight:600; margin-bottom:0px;'>Base</div>", unsafe_allow_html=True)
+                _an_top_base = st.selectbox(
+                    label="Base layer analyze",
+                    options=["OpenStreetMap", "Positron", "Satellite"],
+                    index=["OpenStreetMap", "Positron", "Satellite"].index(st.session_state['current_base']),
+                    key='analyze_base_selector_top',
+                    label_visibility='collapsed'
+                )
+                if _an_top_base != st.session_state['current_base']:
+                    st.session_state['current_base'] = _an_top_base
 
             # Placement handled directly via per-process Place/Done buttons in left panel
 
@@ -848,29 +847,9 @@ div[data-testid="stVerticalBlock"] > div div[data-baseweb="select"] div[role="co
                         draw.text((tx, ty), label, fill=(10, 53, 85, 255), font=font)
                     else:
                         draw.text((tx, ty), label, fill=(10, 53, 85, 255))
-                # Present snapshot with a slim control column to its right for base layer switching
-                snap_col, ctrl_col_an = st.columns([40,2])
-                with snap_col:
-                    img = base_img  # for coordinate capture
-                    coords = streamlit_image_coordinates(img, key="meas_img", width=w)
-                with ctrl_col_an:
-                    st.markdown("<div style='font-size:12px;font-weight:600;margin-bottom:2px;'>Base</div>", unsafe_allow_html=True)
-                    _an_base = st.selectbox(
-                        label="Base layer analyze",
-                        options=["OpenStreetMap", "Positron", "Satellite"],
-                        index=["OpenStreetMap", "Positron", "Satellite"].index(active_base if active_base in ["OpenStreetMap","Positron","Satellite"] else st.session_state['current_base']),
-                        key='analyze_base_selector',
-                        label_visibility='collapsed'
-                    )
-                    if _an_base != st.session_state['current_base']:
-                        st.session_state['current_base'] = _an_base
-                    st.markdown("""
-<style>
-div[data-testid="stVerticalBlock"] > div div[data-baseweb="select"] {min-height:32px;}
-div[data-testid="stVerticalBlock"] > div div[data-baseweb="select"] * {font-size:11px;}
-div[data-testid="stVerticalBlock"] > div div[data-baseweb="select"] div[role="combobox"] {padding:2px 6px;}
-</style>
-""", unsafe_allow_html=True)
+                # Present snapshot full width (base selector moved to top bar)
+                img = base_img  # for coordinate capture
+                coords = streamlit_image_coordinates(img, key="meas_img", width=w)
                 if st.session_state['placement_mode'] and coords is not None and st.session_state.get('placing_process_idx') is not None:
                     x_px, y_px = coords['x'], coords['y']
                     lon_new, lat_new = snapshot_pixel_to_lonlat(x_px, y_px, st.session_state['map_center'][::-1], st.session_state['map_zoom'], w, h)
