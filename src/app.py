@@ -358,8 +358,8 @@ with left:
                     st.caption("(No processes in this group)")
                 for local_idx, i in enumerate(g_list):
                     p = st.session_state['processes'][i]
-                    # Per-process header (arrow | name | place | delete)
-                    header_cols = st.columns([0.06, 0.60, 0.22, 0.12])
+                    # Per-process header (toggle | name | size | place | delete)
+                    header_cols = st.columns([0.06, 0.54, 0.14, 0.16, 0.10])
                     toggle_label = "▾" if st.session_state['proc_expanded'][i] else "▸"
                     if header_cols[0].button(toggle_label, key=f"proc_toggle_{i}"):
                         st.session_state['proc_expanded'][i] = not st.session_state['proc_expanded'][i]
@@ -374,21 +374,33 @@ with left:
                         label_visibility="collapsed",
                         placeholder=f"Process {i+1}"
                     )
+                    # Size slider (scale factor for box rendering)
+                    if 'box_scale' not in p or p.get('box_scale') in (None, ''):
+                        p['box_scale'] = 1.0
+                    p['box_scale'] = header_cols[2].slider(
+                        "Size",
+                        min_value=0.5,
+                        max_value=3.0,
+                        value=float(p.get('box_scale',1.0)),
+                        step=0.1,
+                        key=f"p_box_scale_{i}",
+                        label_visibility="collapsed"
+                    )
                     place_active = (st.session_state['placement_mode'] and st.session_state.get('placing_process_idx') == i)
                     if not place_active:
-                        if header_cols[2].button("Place", key=f"place_{i}"):
+                        if header_cols[3].button("Place", key=f"place_{i}"):
                             st.session_state['placement_mode'] = True
                             st.session_state['measure_mode'] = False
                             st.session_state['placing_process_idx'] = i
                             st.rerun()
                     else:
-                        if header_cols[2].button("Done", key=f"done_place_{i}"):
+                        if header_cols[3].button("Done", key=f"done_place_{i}"):
                             st.session_state['placement_mode'] = False
                             st.session_state['placing_process_idx'] = None
                             st.rerun()
                     pending = st.session_state.get('proc_delete_pending')
                     if pending == i:
-                        with header_cols[3]:
+                        with header_cols[4]:
                             st.write("Sure?")
                             if st.button("✅", key=f"confirm_del_{i}"):
                                 delete_process(st.session_state, i)
@@ -398,7 +410,7 @@ with left:
                             if st.button("❌", key=f"cancel_del_{i}"):
                                 st.session_state['proc_delete_pending'] = None
                     else:
-                        if header_cols[3].button("✕", key=f"del_proc_{i}"):
+                        if header_cols[4].button("✕", key=f"del_proc_{i}"):
                             st.session_state['proc_delete_pending'] = i
                             st.rerun()
 
@@ -742,12 +754,14 @@ div.leaflet-container {background: #f2f2f3 !important;}
                         if proc_px < -50 or proc_py < -20 or proc_px > w + 50 or proc_py > h + 20:
                             continue
                         label = p.get('name') or f"P{i+1}"
-                        padding = 6
+                        scale = float(p.get('box_scale', 1.0) or 1.0)
+                        base_padding = 6
+                        padding = int(base_padding * scale)
                         text_bbox = draw.textbbox((0, 0), label, font=font) if font else (0, 0, len(label) * 6, 10)
-                        tw = text_bbox[2] - text_bbox[0]
-                        th = text_bbox[3] - text_bbox[1]
-                        box_w = tw + padding * 2
-                        box_h = th + padding * 2
+                        tw = (text_bbox[2] - text_bbox[0])
+                        th = (text_bbox[3] - text_bbox[1])
+                        box_w = int(tw * scale + padding * 2)
+                        box_h = int(th * scale + padding * 2)
                         x0 = int(proc_px - box_w / 2)
                         y0 = int(proc_py - box_h / 2)
                         x1 = x0 + box_w
@@ -858,21 +872,38 @@ div.leaflet-container {background: #f2f2f3 !important;}
                     x0, y0, x1, y1 = item['box']
                     label = item['label']
                     padding = 6
+                    # Retrieve scale from process for consistent font positioning relative to new box
+                    proc_scale = 1.0
+                    try:
+                        proc_scale = float(st.session_state['processes'][item['idx']].get('box_scale',1.0) or 1.0)
+                    except (ValueError, TypeError):
+                        proc_scale = 1.0
+                    padding = int(6 * proc_scale)
                     # Filled box
                     # Light blue fill, darker blue border
                     draw.rectangle([x0, y0, x1, y1], fill=(224, 242, 255, 245), outline=(23, 105, 170, 255), width=2)
-                    tx = x0 + padding
-                    ty = y0 + padding
+                    # Center text inside box
+                    box_w = x1 - x0
+                    box_h = y1 - y0
                     if font:
-                        draw.text((tx, ty), label, fill=(10, 53, 85, 255), font=font)
+                        bbox_lbl = draw.textbbox((0,0), label, font=font)
+                        t_w = bbox_lbl[2]-bbox_lbl[0]
+                        t_h = bbox_lbl[3]-bbox_lbl[1]
                     else:
-                        draw.text((tx, ty), label, fill=(10, 53, 85, 255))
+                        t_w = len(label)*6
+                        t_h = 10
+                    ct_x = int(x0 + (box_w - t_w)/2)
+                    ct_y = int(y0 + (box_h - t_h)/2)
+                    if font:
+                        draw.text((ct_x, ct_y), label, fill=(10, 53, 85, 255), font=font)
+                    else:
+                        draw.text((ct_x, ct_y), label, fill=(10, 53, 85, 255))
 
                 # Fourth pass: vertical stream arrows (Tin above box entering, Tout below leaving)
                 # Color rule: if Tin > Tout -> red (cooling stream), else blue (heating stream). Unknown -> gray.
                 # Labels now ONLY appear at top (Tin, ṁ, cp) and bottom (Tout, ṁ, cp) – nothing in the middle so arrows can be closer.
                 arrow_len_v = 45  # vertical arrow length above / below box
-                base_stream_spacing = 42  # base horizontal spacing between stream centers
+                base_stream_spacing = 60  # wider default spacing to avoid overlap
 
                 def _draw_v_arrow(draw_ctx, x_pos, y_from, y_to, head_at_end=True, color=(0,0,0,245), width=3):
                     """Draw vertical arrow from y_from to y_to at x_pos. If head_at_end True head at y_to else at y_from."""
