@@ -490,10 +490,13 @@ with right:
         info_col.caption("When ready, press 'Lock map and analyze'.")
         # Base layer selector placed in same top row
         base_col.markdown("<div style='font-size:12px; font-weight:600; margin-bottom:2px;'>Base</div>", unsafe_allow_html=True)
+        base_options = ["OpenStreetMap", "Positron", "Satellite", "Blank"]
+        if st.session_state['current_base'] not in base_options:
+            st.session_state['current_base'] = 'OpenStreetMap'
         _map_base = base_col.selectbox(
             label="Base layer",
-            options=["OpenStreetMap", "Positron", "Satellite"],
-            index=["OpenStreetMap", "Positron", "Satellite"].index(st.session_state['current_base']),
+            options=base_options,
+            index=base_options.index(st.session_state['current_base']),
             key='map_base_selector',
             label_visibility='collapsed'
         )
@@ -512,7 +515,16 @@ div[data-testid=\"stVerticalBlock\"] > div div[data-baseweb=\"select\"] div[role
         map_col = st.container()
         with map_col:
             # Build map with only the chosen base layer
-            if selected_base == 'Satellite':
+            if selected_base == 'Blank':
+                fmap = folium.Map(location=st.session_state['selector_center'], zoom_start=st.session_state['selector_zoom'], tiles=None)
+                # Add a transparent 1x1 tile layer colored via CSS overlay not natively supported; skip tiles, map background will be default.
+                # We'll inject simple CSS to set map background to very light gray.
+                st.markdown("""
+<style>
+div.leaflet-container {background: #f2f2f3 !important;}
+</style>
+""", unsafe_allow_html=True)
+            elif selected_base == 'Satellite':
                 fmap = folium.Map(location=st.session_state['selector_center'], zoom_start=st.session_state['selector_zoom'], tiles=None)
                 folium.TileLayer(
                     tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
@@ -666,10 +678,13 @@ div[data-testid=\"stVerticalBlock\"] > div div[data-baseweb=\"select\"] div[role
                 st.empty()  # spacer
             with top_c4:
                 st.markdown("<div style='font-size:12px; font-weight:600; margin-bottom:0px;'>Base</div>", unsafe_allow_html=True)
+                analyze_options = ["OpenStreetMap", "Positron", "Satellite", "Blank"]
+                if st.session_state['current_base'] not in analyze_options:
+                    st.session_state['current_base'] = 'OpenStreetMap'
                 _an_top_base = st.selectbox(
                     label="Base layer analyze",
-                    options=["OpenStreetMap", "Positron", "Satellite"],
-                    index=["OpenStreetMap", "Positron", "Satellite"].index(st.session_state['current_base']),
+                    options=analyze_options,
+                    index=analyze_options.index(st.session_state['current_base']),
                     key='analyze_base_selector_top',
                     label_visibility='collapsed'
                 )
@@ -684,10 +699,15 @@ div[data-testid=\"stVerticalBlock\"] > div div[data-baseweb=\"select\"] div[role
             # Active base for Analyze: persistent independent selection
             active_base = st.session_state.get('current_base', st.session_state.get('analyze_base_layer','OpenStreetMap'))
             snapshots_dict = st.session_state.get('map_snapshots', {})
-            chosen_bytes = snapshots_dict.get(active_base) or st.session_state.get('map_snapshot')
-            if chosen_bytes:
-                base_img = Image.open(BytesIO(chosen_bytes)).convert("RGBA")
+            if active_base == 'Blank':
+                # Create a blank light gray image placeholder same size as last snapshot (or default size)
+                base_img = Image.new('RGBA', (MAP_WIDTH, MAP_HEIGHT), (242,242,243,255))
                 w, h = base_img.size
+            else:
+                chosen_bytes = snapshots_dict.get(active_base) or st.session_state.get('map_snapshot')
+                base_img = Image.open(BytesIO(chosen_bytes)).convert("RGBA") if chosen_bytes else Image.new('RGBA',(MAP_WIDTH,MAP_HEIGHT),(242,242,243,255))
+                w, h = base_img.size
+            if base_img:
 
                 # --- Overlay process boxes & connecting arrows on snapshot ---
                 draw = ImageDraw.Draw(base_img)
