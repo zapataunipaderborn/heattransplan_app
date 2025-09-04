@@ -867,6 +867,113 @@ div.leaflet-container {background: #f2f2f3 !important;}
                         draw.text((tx, ty), label, fill=(10, 53, 85, 255), font=font)
                     else:
                         draw.text((tx, ty), label, fill=(10, 53, 85, 255))
+
+                # Fourth pass: vertical stream arrows (Tin above box entering, Tout below leaving)
+                # Color rule: if Tin > Tout -> red (cooling stream), else blue (heating stream). Unknown -> gray.
+                # Labels now ONLY appear at top (Tin, ṁ, cp) and bottom (Tout, ṁ, cp) – nothing in the middle so arrows can be closer.
+                arrow_len_v = 45  # vertical arrow length above / below box
+                base_stream_spacing = 42  # base horizontal spacing between stream centers
+
+                def _draw_v_arrow(draw_ctx, x_pos, y_from, y_to, head_at_end=True, color=(0,0,0,245), width=3):
+                    """Draw vertical arrow from y_from to y_to at x_pos. If head_at_end True head at y_to else at y_from."""
+                    draw_ctx.line([(x_pos, y_from), (x_pos, y_to)], fill=color, width=width)
+                    head_len = 11
+                    head_half = 7
+                    if head_at_end:
+                        # Triangle pointing direction of (y_to - y_from)
+                        direction = 1 if y_to >= y_from else -1
+                        tip_y = y_to
+                        base_y = y_to - direction * head_len
+                    else:
+                        direction = 1 if y_from >= y_to else -1
+                        tip_y = y_from
+                        base_y = y_from - direction * head_len
+                    # Triangle horizontal span
+                    draw_ctx.polygon([
+                        (x_pos, tip_y),
+                        (x_pos - head_half, base_y),
+                        (x_pos + head_half, base_y)
+                    ], fill=color)
+
+                def _label_centered(text_str, x_center, y_baseline, above=True):
+                    if not text_str:
+                        return
+                    if font:
+                        tb = draw.textbbox((0,0), text_str, font=font)
+                        t_width = tb[2]-tb[0]; t_height = tb[3]-tb[1]
+                    else:
+                        t_width = len(text_str)*6; t_height = 10
+                    text_xc = int(x_center - t_width/2)
+                    text_yc = int(y_baseline - (t_height if above else 0))
+                    draw.rectangle([text_xc-2, text_yc-2, text_xc+t_width+2, text_yc+t_height+2], fill=(255,255,255,230))
+                    if font:
+                        draw.text((text_xc, text_yc), text_str, fill=(0,0,0,255), font=font)
+                    else:
+                        draw.text((text_xc, text_yc), text_str, fill=(0,0,0,255))
+
+                for item in positioned:
+                    proc_idx = item['idx']
+                    proc = st.session_state['processes'][proc_idx]
+                    streams = proc.get('streams', []) or []
+                    if not streams:
+                        continue
+                    x0, y0, x1, y1 = item['box']
+                    box_center_x = (x0 + x1) / 2
+                    n_streams = len(streams)
+                    # Dynamic spacing: attempt to shrink if narrow box; ensure minimum 28 px spacing
+                    stream_h_spacing = max(28, min(base_stream_spacing, (x1 - x0 - 20) / max(1, n_streams))) if n_streams > 1 else 0
+                    for s_i, s in enumerate(streams):
+                        offset = (s_i - (n_streams - 1)/2) * stream_h_spacing
+                        sx = int(box_center_x + offset)
+                        # Attempt to parse temperatures
+                        tin_raw = s.get('temp_in', '')
+                        tout_raw = s.get('temp_out', '')
+                        try:
+                            tin_val = float(str(tin_raw).strip())
+                        except (ValueError, TypeError):
+                            tin_val = None
+                        try:
+                            tout_val = float(str(tout_raw).strip())
+                        except (ValueError, TypeError):
+                            tout_val = None
+                        # Color logic
+                        if tin_val is not None and tout_val is not None:
+                            is_cooling = tin_val > tout_val
+                            col = (200, 25, 25, 255) if is_cooling else (25, 80, 200, 255)
+                        else:
+                            col = (90, 90, 90, 255)
+                        # Inbound arrow (above box pointing downward INTO box)
+                        inbound_bottom = y0 - 2  # head just touches box border
+                        inbound_top = inbound_bottom - arrow_len_v
+                        _draw_v_arrow(draw, sx, inbound_top, inbound_bottom, head_at_end=True, color=col, width=4)
+                        # Outbound arrow (below box pointing downward AWAY from box)
+                        outbound_top = y1 + 2
+                        outbound_bottom = outbound_top + arrow_len_v
+                        _draw_v_arrow(draw, sx, outbound_top, outbound_bottom, head_at_end=True, color=col, width=4)
+                        # Labels
+                        # m dot symbol fallback handling
+                        mdot_raw = s.get('mdot','')
+                        cp_raw = s.get('cp','')
+                        # Prefer combining dot ṁ; if font renders poorly user can switch later; keep fallback token
+                        m_symbol = "ṁ"  # m + combining dot above
+                        if isinstance(mdot_raw, str) and mdot_raw.strip() == '':
+                            mdot_part = ''
+                        else:
+                            mdot_part = f"{m_symbol}={mdot_raw}" if mdot_raw not in (None,'') else ''
+                        cp_part = f"cp={cp_raw}" if cp_raw not in (None,'') else ''
+                        # Build top & bottom label clusters
+                        tin_label = f"Tin={tin_raw}" if tin_raw not in ('', None) else 'Tin=?'
+                        tout_label = f"Tout={tout_raw}" if tout_raw not in ('', None) else 'Tout=?'
+                        top_components = [tin_label]
+                        if mdot_part: top_components.append(mdot_part)
+                        if cp_part: top_components.append(cp_part)
+                        bot_components = [tout_label]
+                        if mdot_part: bot_components.append(mdot_part)
+                        if cp_part: bot_components.append(cp_part)
+                        top_text = "  |  ".join(top_components)
+                        bot_text = "  |  ".join(bot_components)
+                        _label_centered(top_text, sx, inbound_top - 6, above=True)
+                        _label_centered(bot_text, sx, outbound_bottom + 6, above=False)
                 # Present snapshot full width (base selector moved to top bar)
                 img = base_img  # for coordinate capture
                 coords = streamlit_image_coordinates(img, key="meas_img", width=w)
