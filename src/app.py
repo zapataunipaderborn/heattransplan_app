@@ -523,12 +523,22 @@ div[data-testid=\"stVerticalBlock\"] > div div[data-baseweb=\"select\"] div[role
 </style>
 """, unsafe_allow_html=True)
         selected_base = st.session_state.get('current_base', 'OpenStreetMap')
+        # Check if we need to recreate the map
+        import hashlib
+        processes_hash = hashlib.md5(str(st.session_state.get('processes', [])).encode()).hexdigest()
+        map_state_hash = f"{selected_base}_{processes_hash}"
+        need_recreate = (
+            'map_state_hash' not in st.session_state or
+            st.session_state['map_state_hash'] != map_state_hash
+        )
+        if need_recreate:
+            st.session_state['map_state_hash'] = map_state_hash
         # Single wide map container below controls
         map_col = st.container()
         with map_col:
             # Build map with only the chosen base layer
             if selected_base == 'Blank':
-                fmap = folium.Map(location=st.session_state['selector_center'], zoom_start=st.session_state['selector_zoom'], tiles=None)
+                fmap = folium.Map(location=[51.70814085564164, 8.772155163087213], zoom_start=17.5, tiles=None)
                 # Add a transparent 1x1 tile layer colored via CSS overlay not natively supported; skip tiles, map background will be default.
                 # We'll inject simple CSS to set map background to very light gray.
                 st.markdown("""
@@ -537,16 +547,16 @@ div.leaflet-container {background: #f2f2f3 !important;}
 </style>
 """, unsafe_allow_html=True)
             elif selected_base == 'Satellite':
-                fmap = folium.Map(location=st.session_state['selector_center'], zoom_start=st.session_state['selector_zoom'], tiles=None)
+                fmap = folium.Map(location=[51.70814085564164, 8.772155163087213], zoom_start=17.5, tiles=None)
                 folium.TileLayer(
                     tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
                     attr='Esri WorldImagery',
                     name='Satellite'
                 ).add_to(fmap)
             elif selected_base == 'Positron':
-                fmap = folium.Map(location=st.session_state['selector_center'], zoom_start=st.session_state['selector_zoom'], tiles='CartoDB positron')
+                fmap = folium.Map(location=[51.70814085564164, 8.772155163087213], zoom_start=17.5, tiles='CartoDB positron')
             else:
-                fmap = folium.Map(location=st.session_state['selector_center'], zoom_start=st.session_state['selector_zoom'], tiles='OpenStreetMap')
+                fmap = folium.Map(location=[51.70814085564164, 8.772155163087213], zoom_start=17.5, tiles='OpenStreetMap')
             # Feature groups for overlays
             process_fg = folium.FeatureGroup(name='Processes', show=True)
             connection_fg = folium.FeatureGroup(name='Connections', show=True)
@@ -620,7 +630,9 @@ div.leaflet-container {background: #f2f2f3 !important;}
             connection_fg.add_to(fmap)
             fmap_data = st_folium(
                 fmap,
-                key="selector_map",
+                key=f"selector_map_{map_state_hash}",
+                center=st.session_state['selector_center'],
+                zoom=st.session_state['selector_zoom'],
                 width=MAP_WIDTH,
                 height=MAP_HEIGHT,
                 returned_objects=["center","zoom","last_clicked"],
