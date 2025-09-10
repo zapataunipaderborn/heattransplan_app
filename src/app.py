@@ -177,8 +177,10 @@ with left:
     if mode_current == "Select Map":
         col_lock = st.columns([1])[0]
         if col_lock.button("Lock map and analyze", key="btn_lock_analyze"):
-            new_center = st.session_state['selector_center'][:]
-            new_zoom = st.session_state['selector_zoom']
+            # Get current map position - use the most recent position if available
+            new_center = st.session_state.get('current_map_center', st.session_state.get('selector_center', [51.70814085564164, 8.772155163087213]))
+            new_zoom = round(st.session_state.get('current_map_zoom', st.session_state.get('selector_zoom', 17.5)))  # Round zoom to integer for tile servers
+            
             selected_base_now = st.session_state.get('current_base', 'OpenStreetMap')
             existing_snaps = st.session_state.get('map_snapshots', {})
             regenerate = (
@@ -651,7 +653,13 @@ div.leaflet-container {background: #f2f2f3 !important;}
                         pass
             # Only save position changes, don't force update the map view
             # This prevents the oscillation by not feeding the map position back to itself
-            pass  # Remove the position update logic entirely
+            # But save the current position for when we need to lock the map
+            if fmap_data and 'center' in fmap_data and 'zoom' in fmap_data:
+                c = fmap_data['center']
+                new_center = [c['lat'], c['lng']] if isinstance(c, dict) else c
+                new_zoom = fmap_data['zoom']
+                st.session_state['current_map_center'] = new_center
+                st.session_state['current_map_zoom'] = new_zoom
             st.caption("Pan/zoom, then click 'Lock map and analyze' to capture a snapshot.")
     else:
         # Analysis mode
