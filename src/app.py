@@ -630,9 +630,7 @@ div.leaflet-container {background: #f2f2f3 !important;}
             connection_fg.add_to(fmap)
             fmap_data = st_folium(
                 fmap,
-                key=f"selector_map_{map_state_hash}",
-                center=st.session_state['selector_center'],
-                zoom=st.session_state['selector_zoom'],
+                key="selector_map_stable",
                 width=MAP_WIDTH,
                 height=MAP_HEIGHT,
                 returned_objects=["center","zoom","last_clicked"],
@@ -651,13 +649,9 @@ div.leaflet-container {background: #f2f2f3 !important;}
                         st.session_state['processes'][pidx]['lon'] = round(float(lon), 6)
                     except (ValueError, TypeError):
                         pass
-            if fmap_data and 'center' in fmap_data and 'zoom' in fmap_data:
-                c = fmap_data['center']
-                if isinstance(c, dict):
-                    st.session_state['selector_center'] = [c['lat'], c['lng']]
-                else:
-                    st.session_state['selector_center'] = c
-                st.session_state['selector_zoom'] = fmap_data['zoom']
+            # Only save position changes, don't force update the map view
+            # This prevents the oscillation by not feeding the map position back to itself
+            pass  # Remove the position update logic entirely
             st.caption("Pan/zoom, then click 'Lock map and analyze' to capture a snapshot.")
     else:
         # Analysis mode
