@@ -169,7 +169,7 @@ if 'analyze_base_layer' not in st.session_state: st.session_state['analyze_base_
 if 'current_base' not in st.session_state:
     st.session_state['current_base'] = 'OpenStreetMap'
 
-left, right = st.columns([2.4, 5.6], gap="small")  # wider process panel, smaller gap to map
+left, right = st.columns([2.4, 5.6], gap="small")  # wider subprocess panel, smaller gap to map
 
 with left:
     # Compact mode buttons side by side
@@ -246,22 +246,22 @@ with left:
                 'ui_status_msg': None,
             })
             st.rerun()
-        if col_add.button("Add group of processes", key="btn_add_group_top"):
-            # Ensure groups list exists
+        if col_add.button("Add a process", key="btn_add_group_top"):
+            # Ensure processes list exists
             if 'proc_groups' not in st.session_state:
                 st.session_state['proc_groups'] = []
-            st.session_state['proc_groups'].append([])  # new empty group
-            # Sync group names & expansion
+            st.session_state['proc_groups'].append([])  # new empty process
+            # Sync process names & expansion
             if 'proc_group_names' not in st.session_state:
                 st.session_state['proc_group_names'] = []
-            st.session_state['proc_group_names'].append(f"Group {len(st.session_state['proc_groups'])}")
+            st.session_state['proc_group_names'].append(f"Process {len(st.session_state['proc_groups'])}")
             if 'proc_group_expanded' not in st.session_state:
                 st.session_state['proc_group_expanded'] = []
             st.session_state['proc_group_expanded'].append(True)
-            st.session_state['ui_status_msg'] = "Added new empty group"
+            st.session_state['ui_status_msg'] = "Added new empty process"
             st.rerun()
     mode = st.session_state['ui_mode_radio']
-    # Process & Stream UI (only show in Analyze mode to mimic original workflow)
+    # Subprocess & Stream UI (only show in Analyze mode to mimic original workflow)
     if mode == "Analyze":
         # Show editor if we have any processes OR any groups (even empty groups)
         has_groups = bool(st.session_state.get('proc_groups'))
@@ -318,7 +318,7 @@ with left:
             for g, g_list in enumerate(st.session_state['proc_groups']):
                 # Top thick separator for group
                 st.markdown("<div style='height:3px; background:#888888; margin:12px 0 6px;'></div>", unsafe_allow_html=True)
-                # Arrow | Name | Add process | Count | Delete
+                # Arrow | Name | Add subprocess | Count | Delete
                 gh_cols = st.columns([0.05, 0.40, 0.20, 0.10, 0.10])
                 g_toggle_label = "▾" if st.session_state['proc_group_expanded'][g] else "▸"
                 if gh_cols[0].button(g_toggle_label, key=f"group_toggle_{g}"):
@@ -327,7 +327,7 @@ with left:
                 default_name = st.session_state['proc_group_names'][g]
                 new_name = gh_cols[1].text_input("Group name", value=default_name, key=f"group_name_{g}", label_visibility="collapsed", placeholder=f"Group {g+1}")
                 st.session_state['proc_group_names'][g] = new_name.strip() or default_name
-                if gh_cols[2].button("Add process", key=f"add_proc_group_{g}"):
+                if gh_cols[2].button("Add subprocess", key=f"add_proc_group_{g}"):
                     add_process(st.session_state)
                     new_idx = len(st.session_state['processes']) - 1
                     g_list.append(new_idx)
@@ -336,7 +336,7 @@ with left:
                         st.session_state['proc_expanded'].append(False)
                     else:
                         st.session_state['proc_expanded'][new_idx] = False
-                    st.session_state['ui_status_msg'] = f"Added process to {st.session_state['proc_group_names'][g]}"
+                    st.session_state['ui_status_msg'] = f"Added subprocess to {st.session_state['proc_group_names'][g]}"
                     st.rerun()
                 gh_cols[3].markdown(f"**{len(g_list)}**")
                 pending_group = st.session_state.get('group_delete_pending')
@@ -371,7 +371,7 @@ with left:
                     st.caption("(No processes in this group)")
                 for local_idx, i in enumerate(g_list):
                     p = st.session_state['processes'][i]
-                    # Per-process header (toggle | name | size | place | delete)
+                    # Per-subprocess header (toggle | name | size | place | delete)
                     header_cols = st.columns([0.06, 0.54, 0.14, 0.16, 0.10])
                     toggle_label = "▾" if st.session_state['proc_expanded'][i] else "▸"
                     if header_cols[0].button(toggle_label, key=f"proc_toggle_{i}"):
@@ -379,13 +379,13 @@ with left:
                         st.rerun()
                     # Default auto-name if empty
                     if not p.get('name'):
-                        p['name'] = f"Process {i+1}"
+                        p['name'] = f"Subprocess {i+1}"
                     p['name'] = header_cols[1].text_input(
-                        "Process name",
+                        "Subprocess name",
                         value=p.get('name',''),
                         key=f"p_name_{i}",
                         label_visibility="collapsed",
-                        placeholder=f"Process {i+1}"
+                        placeholder=f"Subprocess {i+1}"
                     )
                     # Size slider (scale factor for box rendering)
                     if 'box_scale' not in p or p.get('box_scale') in (None, ''):
@@ -444,12 +444,12 @@ with left:
                                 st.caption("To connect processes, add more than one")
                                 p['next'] = ''
                         else:
-                            # Build option list of other process names
+                            # Build option list of other subprocess names
                             options = []
                             for j, pj in enumerate(all_procs):
                                 if j == i:
                                     continue
-                                nm = pj.get('name') or f"Process {j+1}"
+                                nm = pj.get('name') or f"Subprocess {j+1}"
                                 options.append(nm)
                             # Current selections parsed from stored string
                             current_tokens = [t.strip() for t in (p.get('next','') or '').replace(';',',').replace('|',',').split(',') if t.strip()]
@@ -483,7 +483,7 @@ with left:
                 # Bottom separator after expanded group
                 st.markdown("<div style='height:2px; background:#888888; opacity:0.7; margin:8px 0 4px;'></div>", unsafe_allow_html=True)
         else:
-            st.info("No groups yet. Use 'Add group of processes' to start.")
+            st.info("No groups yet. Use 'Add a process' to start.")
     else:
         # Provide a summary of existing processes while selecting map
         if st.session_state['processes']:
@@ -692,7 +692,7 @@ div.leaflet-container {background: #f2f2f3 !important;}
                 last_msg = st.session_state.get('ui_status_msg')
                 if placing_mode and placing_idx is not None and 0 <= placing_idx < len(st.session_state.get('processes', [])):
                     pname = st.session_state['processes'][placing_idx].get('name') or f"P{placing_idx+1}"
-                    st.info(f"Placing process: {pname} (Double click on map)")
+                    st.info(f"Placing subprocess: {pname} (Double click on map)")
                 elif measure_mode:
                     if dist_val is not None:
                         st.success(f"Distance: {dist_val:.2f} m ({dist_val/1000:.3f} km)")
@@ -730,7 +730,7 @@ div.leaflet-container {background: #f2f2f3 !important;}
                 if _an_top_base != st.session_state['current_base']:
                     st.session_state['current_base'] = _an_top_base
 
-            # Placement handled directly via per-process Place/Done buttons in left panel
+            # Placement handled directly via per-subprocess Place/Done buttons in left panel
 
             # Determine which base layer to display in Analyze view
             # Always start from frozen analyze base layer, but allow user to switch (persist separately)
@@ -748,7 +748,7 @@ div.leaflet-container {background: #f2f2f3 !important;}
                 w, h = base_img.size
             if base_img:
 
-                # --- Overlay process boxes & connecting arrows on snapshot ---
+                # --- Overlay subprocess boxes & connecting arrows on snapshot ---
                 draw = ImageDraw.Draw(base_img)
                 # Larger font for better readability
                 BOX_FONT_SIZE = 20
@@ -820,7 +820,7 @@ div.leaflet-container {background: #f2f2f3 !important;}
                     y_right = y_end - head_len * math.sin(ang_right)
                     draw_ctx.polygon([(x_end, y_end), (x_left, y_left), (x_right, y_right)], fill=color)
 
-                # Build quick lookup by process name (case-insensitive)
+                # Build quick lookup by subprocess name (case-insensitive)
                 # Also allow fallback tokens like numeric indices (1-based) or label exactly
                 def _resolve_targets(target_token):
                     target_token = target_token.strip()
@@ -899,7 +899,7 @@ div.leaflet-container {background: #f2f2f3 !important;}
                     x0, y0, x1, y1 = item['box']
                     label = item['label']
                     padding = 6
-                    # Retrieve scale from process for consistent font positioning relative to new box
+                    # Retrieve scale from subprocess for consistent font positioning relative to new box
                     proc_scale = 1.0
                     try:
                         proc_scale = float(st.session_state['processes'][item['idx']].get('box_scale',1.0) or 1.0)
@@ -1042,7 +1042,7 @@ div.leaflet-container {background: #f2f2f3 !important;}
                         pidx = st.session_state['placing_process_idx']
                         st.session_state['processes'][pidx]['lat'] = round(lat_new, 6)
                         st.session_state['processes'][pidx]['lon'] = round(lon_new, 6)
-                        st.success(f"Set process coords to ({lat_new:.6f}, {lon_new:.6f})")
+                        st.success(f"Set subprocess coords to ({lat_new:.6f}, {lon_new:.6f})")
                     except (ValueError, TypeError):
                         st.error("Failed to set coordinates")
                 if st.session_state['measure_mode']:
