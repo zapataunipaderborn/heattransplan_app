@@ -168,6 +168,12 @@ if 'analyze_base_layer' not in st.session_state: st.session_state['analyze_base_
 # Unified persistent base layer selection (only changed by user interaction)
 if 'current_base' not in st.session_state:
     st.session_state['current_base'] = 'OpenStreetMap'
+# New hierarchical placement state
+if 'group_placement_mode' not in st.session_state: st.session_state['group_placement_mode'] = False
+if 'placing_group_idx' not in st.session_state: st.session_state['placing_group_idx'] = None
+if 'open_subprocess_canvas_group' not in st.session_state: st.session_state['open_subprocess_canvas_group'] = None
+if 'placing_canvas_process_idx' not in st.session_state: st.session_state['placing_canvas_process_idx'] = None
+if 'last_group_click' not in st.session_state: st.session_state['last_group_click'] = None
 
 left, right = st.columns([2.4, 5.6], gap="small")  # wider subprocess panel, smaller gap to map
 
@@ -258,6 +264,11 @@ with left:
             if 'proc_group_expanded' not in st.session_state:
                 st.session_state['proc_group_expanded'] = []
             st.session_state['proc_group_expanded'].append(True)
+            # Initialize parallel lat/lon arrays
+            if 'proc_group_lat' not in st.session_state: st.session_state['proc_group_lat'] = []
+            if 'proc_group_lon' not in st.session_state: st.session_state['proc_group_lon'] = []
+            st.session_state['proc_group_lat'].append(None)
+            st.session_state['proc_group_lon'].append(None)
             st.session_state['ui_status_msg'] = "Added new empty process"
             st.rerun()
     mode = st.session_state['ui_mode_radio']
@@ -299,6 +310,17 @@ with left:
                 else:
                     current_names = current_names[:group_count]
                 st.session_state['proc_group_names'] = current_names
+            # Align group lat/lon arrays
+            if 'proc_group_lat' not in st.session_state: st.session_state['proc_group_lat'] = [None]*group_count
+            if 'proc_group_lon' not in st.session_state: st.session_state['proc_group_lon'] = [None]*group_count
+            if len(st.session_state['proc_group_lat']) < group_count:
+                st.session_state['proc_group_lat'].extend([None]*(group_count - len(st.session_state['proc_group_lat'])))
+            if len(st.session_state['proc_group_lon']) < group_count:
+                st.session_state['proc_group_lon'].extend([None]*(group_count - len(st.session_state['proc_group_lon'])))
+            if len(st.session_state['proc_group_lat']) > group_count:
+                st.session_state['proc_group_lat'] = st.session_state['proc_group_lat'][:group_count]
+            if len(st.session_state['proc_group_lon']) > group_count:
+                st.session_state['proc_group_lon'] = st.session_state['proc_group_lon'][:group_count]
             # Track group delete confirmation
             if 'group_delete_pending' not in st.session_state:
                 st.session_state['group_delete_pending'] = None
@@ -316,10 +338,8 @@ with left:
                 st.session_state['proc_groups'] = new_groups
 
             for g, g_list in enumerate(st.session_state['proc_groups']):
-                # Top thick separator for group
                 st.markdown("<div style='height:3px; background:#888888; margin:12px 0 6px;'></div>", unsafe_allow_html=True)
-                # Arrow | Name | Add subprocess | Count | Delete
-                gh_cols = st.columns([0.05, 0.40, 0.20, 0.10, 0.10])
+                gh_cols = st.columns([0.05, 0.34, 0.18, 0.13, 0.10, 0.10])
                 g_toggle_label = "▾" if st.session_state['proc_group_expanded'][g] else "▸"
                 if gh_cols[0].button(g_toggle_label, key=f"group_toggle_{g}"):
                     st.session_state['proc_group_expanded'][g] = not st.session_state['proc_group_expanded'][g]
@@ -331,27 +351,41 @@ with left:
                     add_process(st.session_state)
                     new_idx = len(st.session_state['processes']) - 1
                     g_list.append(new_idx)
-                    # Ensure proc_expanded has entry and keep it collapsed
                     if len(st.session_state['proc_expanded']) <= new_idx:
                         st.session_state['proc_expanded'].append(False)
                     else:
                         st.session_state['proc_expanded'][new_idx] = False
                     st.session_state['ui_status_msg'] = f"Added subprocess to {st.session_state['proc_group_names'][g]}"
                     st.rerun()
-                gh_cols[3].markdown(f"**{len(g_list)}**")
+                group_place_active = (st.session_state.get('group_placement_mode') and st.session_state.get('placing_group_idx') == g)
+                if not group_place_active:
+                    if gh_cols[3].button("Place", key=f"place_group_{g}"):
+                        st.session_state['group_placement_mode'] = True
+                        st.session_state['placing_group_idx'] = g
+                        st.session_state['ui_status_msg'] = f"Placing process '{st.session_state['proc_group_names'][g]}' (click map in Select Map mode or unlock to adjust)"
+                        st.rerun()
+                else:
+                    if gh_cols[3].button("Done", key=f"done_place_group_{g}"):
+                        st.session_state['group_placement_mode'] = False
+                        st.session_state['placing_group_idx'] = None
+                        st.session_state['ui_status_msg'] = "Process location set"
+                        st.rerun()
+                gh_cols[4].markdown(f"**{len(g_list)}**")
                 pending_group = st.session_state.get('group_delete_pending')
-                with gh_cols[4]:
+                with gh_cols[5]:
                     if pending_group == g:
                         st.write("Sure?")
                         if st.button("✅", key=f"confirm_del_group_{g}"):
-                            # Delete all processes in group (highest index first)
                             for pi in sorted(g_list, reverse=True):
                                 delete_process(st.session_state, pi)
                                 _reindex_groups_after_delete(pi)
-                            # Remove group metadata
                             st.session_state['proc_groups'].pop(g)
                             st.session_state['proc_group_names'].pop(g)
                             st.session_state['proc_group_expanded'].pop(g)
+                            if 'proc_group_lat' in st.session_state and g < len(st.session_state['proc_group_lat']):
+                                st.session_state['proc_group_lat'].pop(g)
+                            if 'proc_group_lon' in st.session_state and g < len(st.session_state['proc_group_lon']):
+                                st.session_state['proc_group_lon'].pop(g)
                             st.session_state['group_delete_pending'] = None
                             st.session_state['ui_status_msg'] = "Group deleted"
                             st.rerun()
@@ -361,23 +395,23 @@ with left:
                         if st.button("✕", key=f"del_group_{g}"):
                             st.session_state['group_delete_pending'] = g
                             st.rerun()
-
                 if not st.session_state['proc_group_expanded'][g]:
-                    # Bottom separator for collapsed group
                     st.markdown("<div style='height:2px; background:#888888; opacity:0.7; margin:6px 0 4px;'></div>", unsafe_allow_html=True)
                     continue
-
                 if not g_list:
                     st.caption("(No processes in this group)")
+                if 'proc_group_lat' in st.session_state and g < len(st.session_state['proc_group_lat']):
+                    glat = st.session_state['proc_group_lat'][g]
+                    glon = st.session_state['proc_group_lon'][g]
+                    if glat is not None and glon is not None:
+                        st.caption(f"Location: {glat}, {glon}")
                 for local_idx, i in enumerate(g_list):
                     p = st.session_state['processes'][i]
-                    # Per-subprocess header (toggle | name | size | place | delete)
                     header_cols = st.columns([0.06, 0.54, 0.14, 0.16, 0.10])
                     toggle_label = "▾" if st.session_state['proc_expanded'][i] else "▸"
                     if header_cols[0].button(toggle_label, key=f"proc_toggle_{i}"):
                         st.session_state['proc_expanded'][i] = not st.session_state['proc_expanded'][i]
                         st.rerun()
-                    # Default auto-name if empty
                     if not p.get('name'):
                         p['name'] = f"Subprocess {i+1}"
                     p['name'] = header_cols[1].text_input(
@@ -387,7 +421,6 @@ with left:
                         label_visibility="collapsed",
                         placeholder=f"Subprocess {i+1}"
                     )
-                    # Size slider (scale factor for box rendering)
                     if 'box_scale' not in p or p.get('box_scale') in (None, ''):
                         p['box_scale'] = 1.0
                     p['box_scale'] = header_cols[2].slider(
@@ -399,17 +432,18 @@ with left:
                         key=f"p_box_scale_{i}",
                         label_visibility="collapsed"
                     )
-                    place_active = (st.session_state['placement_mode'] and st.session_state.get('placing_process_idx') == i)
-                    if not place_active:
-                        if header_cols[3].button("Place", key=f"place_{i}"):
-                            st.session_state['placement_mode'] = True
-                            st.session_state['measure_mode'] = False
-                            st.session_state['placing_process_idx'] = i
+                    canvas_place_active = (st.session_state.get('placing_canvas_process_idx') == i and st.session_state.get('open_subprocess_canvas_group') == g)
+                    if not canvas_place_active:
+                        if header_cols[3].button("Place in canvas", key=f"place_canvas_{i}"):
+                            st.session_state['placing_canvas_process_idx'] = i
+                            # Auto-open canvas for this group if not already
+                            if st.session_state.get('open_subprocess_canvas_group') != g:
+                                st.session_state['open_subprocess_canvas_group'] = g
+                            st.session_state['ui_status_msg'] = f"Click inside subprocess canvas to place '{p.get('name') or f'Subprocess {i+1}'}'"
                             st.rerun()
                     else:
-                        if header_cols[3].button("Done", key=f"done_place_{i}"):
-                            st.session_state['placement_mode'] = False
-                            st.session_state['placing_process_idx'] = None
+                        if header_cols[3].button("Done", key=f"done_canvas_place_{i}"):
+                            st.session_state['placing_canvas_process_idx'] = None
                             st.rerun()
                     pending = st.session_state.get('proc_delete_pending')
                     if pending == i:
@@ -426,40 +460,31 @@ with left:
                         if header_cols[4].button("✕", key=f"del_proc_{i}"):
                             st.session_state['proc_delete_pending'] = i
                             st.rerun()
-
                     if st.session_state['proc_expanded'][i]:
                         r1c1,r1c2,r1c3,r1c4 = st.columns([1,1,1,1])
                         p['conntemp'] = r1c1.text_input("Product Tin", value=p.get('conntemp',''), key=f"p_conntemp_{i}")
                         p['product_tout'] = r1c2.text_input("Product Tout", value=p.get('product_tout',''), key=f"p_ptout_{i}")
                         p['connm'] = r1c3.text_input("Product ṁ", value=p.get('connm',''), key=f"p_connm_{i}")
                         p['conncp'] = r1c4.text_input("Product cp", value=p.get('conncp',''), key=f"p_conncp_{i}")
-
                         r2c1,r2c2,r2c3 = st.columns([1,1,3])
                         p['lat'] = r2c1.text_input("Latitude", value=str(p.get('lat') or ''), key=f"p_lat_{i}")
                         p['lon'] = r2c2.text_input("Longitude", value=str(p.get('lon') or ''), key=f"p_lon_{i}")
-                        # Multi-select for next processes (exclude self)
                         all_procs = st.session_state['processes']
                         if len(all_procs) <= 1:
                             with r2c3:
                                 st.caption("To connect processes, add more than one")
                                 p['next'] = ''
                         else:
-                            # Build option list of other subprocess names
                             options = []
                             for j, pj in enumerate(all_procs):
                                 if j == i:
                                     continue
                                 nm = pj.get('name') or f"Subprocess {j+1}"
                                 options.append(nm)
-                            # Current selections parsed from stored string
                             current_tokens = [t.strip() for t in (p.get('next','') or '').replace(';',',').replace('|',',').split(',') if t.strip()]
-                            # Keep only those present in options
                             preselect = [t for t in current_tokens if t in options]
                             selected = r2c3.multiselect("Next processes", options=options, default=preselect, key=f"p_next_multi_{i}")
-                            # Store as comma-separated names
                             p['next'] = ", ".join(selected)
-
-                        # Streams section with persistent add button
                         streams = p.get('streams', [])
                         header_c1, header_c2, header_c3 = st.columns([2,4,1])
                         header_c1.markdown("**Streams**")
@@ -480,8 +505,81 @@ with left:
                                 st.rerun()
                     if local_idx < len(g_list) - 1:
                         st.markdown("<div style='height:1px; background:#888888; opacity:0.5; margin:4px 0;'></div>", unsafe_allow_html=True)
-                # Bottom separator after expanded group
                 st.markdown("<div style='height:2px; background:#888888; opacity:0.7; margin:8px 0 4px;'></div>", unsafe_allow_html=True)
+                canvas_open = (st.session_state.get('open_subprocess_canvas_group') == g)
+                open_label = "Close subprocess canvas" if canvas_open else "Open subprocess canvas"
+                if st.button(open_label, key=f"open_canvas_btn_{g}"):
+                    if canvas_open:
+                        st.session_state['open_subprocess_canvas_group'] = None
+                    else:
+                        st.session_state['open_subprocess_canvas_group'] = g
+                    st.rerun()
+                if canvas_open:
+                    from PIL import Image as _Image, ImageDraw as _ImageDraw, ImageFont as _ImageFont
+                    CANVAS_W, CANVAS_H = 1100, 620
+                    bg = _Image.new('RGBA', (CANVAS_W, CANVAS_H), (230,230,232,255))
+                    drawc = _ImageDraw.Draw(bg)
+                    try:
+                        cfont = _ImageFont.truetype("DejaVuSans.ttf", 18)
+                    except Exception:
+                        cfont = None
+                    auto_positions = []
+                    grid_cols = max(1, int(len(g_list)**0.5))
+                    spacing_x = CANVAS_W / (grid_cols + 1)
+                    spacing_y = 120
+                    row = 0; col = 0
+                    for idx_proc in g_list:
+                        proc_obj = st.session_state['processes'][idx_proc]
+                        if proc_obj.get('canvas_x') is None or proc_obj.get('canvas_y') is None:
+                            x_auto = int((col+1)*spacing_x)
+                            y_auto = int(80 + row*spacing_y)
+                            auto_positions.append((idx_proc, x_auto, y_auto))
+                            col += 1
+                            if col >= grid_cols:
+                                col = 0
+                                row += 1
+                    for idx_proc, ax, ay in auto_positions:
+                        st.session_state['processes'][idx_proc]['canvas_x'] = ax
+                        st.session_state['processes'][idx_proc]['canvas_y'] = ay
+                    for idx_proc in g_list:
+                        proc_obj = st.session_state['processes'][idx_proc]
+                        name = proc_obj.get('name') or f"Subprocess {idx_proc+1}"
+                        cx = proc_obj.get('canvas_x') or 100
+                        cy = proc_obj.get('canvas_y') or 100
+                        w_box = int(150 * float(proc_obj.get('box_scale',1.0) or 1.0))
+                        h_box = int(60 * float(proc_obj.get('box_scale',1.0) or 1.0))
+                        x0 = int(cx - w_box/2); y0 = int(cy - h_box/2); x1 = x0 + w_box; y1 = y0 + h_box
+                        # Highlight if currently being placed
+                        if st.session_state.get('placing_canvas_process_idx') == idx_proc:
+                            outline_col = (255,120,0,255)
+                            outline_w = 4
+                        else:
+                            outline_col = (23,105,170,255)
+                            outline_w = 2
+                        drawc.rectangle([x0,y0,x1,y1], fill=(224,242,255,245), outline=outline_col, width=outline_w)
+                        if cfont:
+                            tb = drawc.textbbox((0,0), name, font=cfont)
+                            tw = tb[2]-tb[0]; th = tb[3]-tb[1]
+                        else:
+                            tw = len(name)*6; th = 12
+                        tx = int(cx - tw/2); ty = int(cy - th/2)
+                        if cfont:
+                            drawc.text((tx,ty), name, fill=(10,53,85,255), font=cfont)
+                        else:
+                            drawc.text((tx,ty), name, fill=(10,53,85,255))
+                    canvas_coords = streamlit_image_coordinates(bg, key=f"subproc_canvas_img_{g}", width=CANVAS_W)
+                    if canvas_coords and st.session_state.get('placing_canvas_process_idx') is not None and st.session_state.get('open_subprocess_canvas_group') == g:
+                        tgt = st.session_state['placing_canvas_process_idx']
+                        if tgt in g_list:
+                            st.session_state['processes'][tgt]['canvas_x'] = canvas_coords['x']
+                            st.session_state['processes'][tgt]['canvas_y'] = canvas_coords['y']
+                            st.session_state['placing_canvas_process_idx'] = None
+                            st.session_state['ui_status_msg'] = "Subprocess placed in canvas"
+                            st.rerun()
+                    if st.session_state.get('placing_canvas_process_idx') is not None and st.session_state.get('open_subprocess_canvas_group') == g:
+                        st.info("Click the canvas to set subprocess position")
+                    else:
+                        st.caption("Use 'Place in canvas' next to a subprocess to reposition it.")
         else:
             st.info("No groups yet. Use 'Add a process' to start.")
     else:
@@ -581,16 +679,21 @@ div.leaflet-container {background: #f2f2f3 !important;}
             # Feature groups for overlays
             process_fg = folium.FeatureGroup(name='Processes', show=True)
             connection_fg = folium.FeatureGroup(name='Connections', show=True)
-            for idx, p in enumerate(st.session_state['processes']):
-                lat = p.get('lat'); lon = p.get('lon')
-                if lat not in (None, "") and lon not in (None, ""):
+            # Show only group (top-level process) markers
+            groups = st.session_state.get('proc_groups', [])
+            for g_idx, g_list in enumerate(groups):
+                glat = None; glon = None
+                if 'proc_group_lat' in st.session_state and g_idx < len(st.session_state['proc_group_lat']):
+                    glat = st.session_state['proc_group_lat'][g_idx]
+                    glon = st.session_state['proc_group_lon'][g_idx]
+                if glat not in (None, "") and glon not in (None, ""):
                     try:
-                        label = p.get('name') or f"P{idx+1}"
-                        html = f"""<div style='background:#e0f2ff;border:2px solid #1769aa;padding:5px 10px;font-size:15px;font-weight:600;color:#0a3555;border-radius:6px;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,0.35);'>📦 {label}</div>"""
+                        label = (st.session_state.get('proc_group_names') or [])[g_idx] if 'proc_group_names' in st.session_state else f"Process {g_idx+1}"
+                        html = f"""<div style='background:#fff;border:2px solid #444;padding:6px 12px;font-size:15px;font-weight:600;color:#222;border-radius:6px;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,0.35);'>🏭 {label}</div>"""
                         folium.Marker(
-                            [float(lat), float(lon)],
+                            [float(glat), float(glon)],
                             tooltip=label,
-                            popup=f"<b>{label}</b><br>Next: {p.get('next','')}",
+                            popup=f"<b>{label}</b><br>Subprocesses: {len(g_list)}",
                             icon=folium.DivIcon(html=html)
                         ).add_to(process_fg)
                     except (ValueError, TypeError):
@@ -617,36 +720,7 @@ div.leaflet-container {background: #f2f2f3 !important;}
                     if tkn:
                         tokens.append(tkn)
                 return tokens
-            for src_idx, p in enumerate(st.session_state['processes']):
-                if src_idx not in coord_by_idx:
-                    continue
-                raw_next = p.get('next', '') or ''
-                for next_token in _parse_targets(raw_next):
-                    tgt_indices = []
-                    if next_token.isdigit():
-                        val = int(next_token) - 1
-                        if val in coord_by_idx:
-                            tgt_indices.append(val)
-                    else:
-                        lname_lookup = next_token.lower()
-                        tgt_indices.extend(name_lookup.get(lname_lookup, []))
-                    for tgt_idx in tgt_indices:
-                        if tgt_idx == src_idx:
-                            continue
-                        lat1, lon1 = coord_by_idx[src_idx]
-                        lat2, lon2 = coord_by_idx[tgt_idx]
-                        try:
-                            folium.PolyLine([(lat1, lon1), (lat2, lon2)], color='#000000', weight=3, opacity=0.9).add_to(connection_fg)
-                            import math as _math_inner
-                            dlat = lat2 - lat1; dlon = lon2 - lon1
-                            if abs(dlat) + abs(dlon) > 0:
-                                arrow_lat = lat2 - dlat * 0.12
-                                arrow_lon = lon2 - dlon * 0.12
-                                ang_deg = _math_inner.degrees(_math_inner.atan2(dlat, dlon))
-                                arrow_html = f"""<div style='transform:translate(-50%,-50%) rotate({ang_deg}deg);font-size:22px;line-height:20px;color:#000000;font-weight:700;'>➤</div>"""
-                                folium.Marker([arrow_lat, arrow_lon], icon=folium.DivIcon(html=arrow_html), tooltip="").add_to(connection_fg)
-                        except (ValueError, TypeError):
-                            pass
+            # (Optional) group-level connection drawing could go here later
             process_fg.add_to(fmap)
             connection_fg.add_to(fmap)
             fmap_data = st_folium(
@@ -657,17 +731,29 @@ div.leaflet-container {background: #f2f2f3 !important;}
                 returned_objects=["center","zoom","last_clicked"],
                 use_container_width=False
             )
-            if (
-                st.session_state.get('placing_process_idx') is not None and
-                fmap_data and fmap_data.get('last_clicked')
-            ):
+            # Debug panel for placement
+            with st.expander("Map debug (temporary)", expanded=False):
+                st.write("Group placement mode:", st.session_state.get('group_placement_mode'))
+                st.write("Placing group index:", st.session_state.get('placing_group_idx'))
+                st.write("Last clicked raw:", (fmap_data or {}).get('last_clicked'))
+                if 'proc_group_lat' in st.session_state:
+                    st.write("Group lat list:", st.session_state['proc_group_lat'])
+                    st.write("Group lon list:", st.session_state['proc_group_lon'])
+            if (st.session_state.get('group_placement_mode') and st.session_state.get('placing_group_idx') is not None and fmap_data and fmap_data.get('last_clicked')):
                 click = fmap_data['last_clicked']
                 lat = click.get('lat'); lon = click.get('lng')
-                if lat is not None and lon is not None:
+                # Avoid processing same coordinate repeatedly (double click) by caching last lat/lon
+                prev = st.session_state.get('last_group_click')
+                new_pair = (lat, lon)
+                if lat is not None and lon is not None and new_pair != prev:
                     try:
-                        pidx = st.session_state['placing_process_idx']
-                        st.session_state['processes'][pidx]['lat'] = round(float(lat), 6)
-                        st.session_state['processes'][pidx]['lon'] = round(float(lon), 6)
+                        gpi = st.session_state['placing_group_idx']
+                        if 'proc_group_lat' in st.session_state and gpi < len(st.session_state['proc_group_lat']):
+                            st.session_state['proc_group_lat'][gpi] = round(float(lat), 6)
+                            st.session_state['proc_group_lon'][gpi] = round(float(lon), 6)
+                            st.session_state['ui_status_msg'] = f"Set process location to ({lat:.6f}, {lon:.6f})"
+                            st.session_state['last_group_click'] = new_pair
+                            st.rerun()
                     except (ValueError, TypeError):
                         pass
             # Only save position changes, don't force update the map view
@@ -684,15 +770,20 @@ div.leaflet-container {background: #f2f2f3 !important;}
             top_c1, top_c2, top_c3, top_c4 = st.columns([3,2,2,2])
             with top_c1:
                 # Decide dynamic status message (priority: placing > measuring > last action > default)
-                placing_idx = st.session_state.get('placing_process_idx')
-                placing_mode = st.session_state.get('placement_mode')
+                placing_idx = st.session_state.get('placing_canvas_process_idx')
+                group_place_mode = st.session_state.get('group_placement_mode')
                 measure_mode = st.session_state.get('measure_mode')
                 measure_points = st.session_state.get('measure_points', [])
                 dist_val = st.session_state.get('measure_distance_m')
                 last_msg = st.session_state.get('ui_status_msg')
-                if placing_mode and placing_idx is not None and 0 <= placing_idx < len(st.session_state.get('processes', [])):
-                    pname = st.session_state['processes'][placing_idx].get('name') or f"P{placing_idx+1}"
-                    st.info(f"Placing subprocess: {pname} (Double click on map)")
+                if group_place_mode and st.session_state.get('placing_group_idx') is not None:
+                    gpi = st.session_state.get('placing_group_idx')
+                    gname = (st.session_state.get('proc_group_names') or [])
+                    g_label = gname[gpi] if gpi is not None and gpi < len(gname) else f"Process {gpi+1 if gpi is not None else ''}"
+                    st.info(f"Placing process '{g_label}' on map (click once)")
+                elif placing_idx is not None and 0 <= placing_idx < len(st.session_state.get('processes', [])) and st.session_state.get('open_subprocess_canvas_group') is not None:
+                    pname = st.session_state['processes'][placing_idx].get('name') or f"Subprocess {placing_idx+1}"
+                    st.info(f"Placing subprocess in canvas: {pname} (click gray area)")
                 elif measure_mode:
                     if dist_val is not None:
                         st.success(f"Distance: {dist_val:.2f} m ({dist_val/1000:.3f} km)")
@@ -749,6 +840,51 @@ div.leaflet-container {background: #f2f2f3 !important;}
             if base_img:
 
                 # --- Overlay subprocess boxes & connecting arrows on snapshot ---
+                # First, draw top-level process (group) markers if group lat/lon available
+                try:
+                    group_lats = st.session_state.get('proc_group_lat', [])
+                    group_lons = st.session_state.get('proc_group_lon', [])
+                    group_names = st.session_state.get('proc_group_names', [])
+                    for g_idx, (glat, glon) in enumerate(zip(group_lats, group_lons)):
+                        if glat in (None, "", "None") or glon in (None, "", "None"):
+                            continue
+                        try:
+                            px, py = snapshot_lonlat_to_pixel(
+                                float(glon),
+                                float(glat),
+                                (st.session_state['map_center'][1], st.session_state['map_center'][0]),
+                                st.session_state['map_zoom'],
+                                w,
+                                h
+                            )
+                        except Exception:
+                            continue
+                        # Skip if outside bounds with small margin
+                        if px < -30 or py < -30 or px > w + 30 or py > h + 30:
+                            continue
+                        g_label = group_names[g_idx] if g_idx < len(group_names) else f"Process {g_idx+1}"
+                        # Marker styling
+                        marker_w = 150
+                        marker_h = 40
+                        x0 = int(px - marker_w/2)
+                        y0 = int(py - marker_h/2)
+                        x1 = x0 + marker_w
+                        y1 = y0 + marker_h
+                        draw = ImageDraw.Draw(base_img)
+                        draw.rounded_rectangle([x0, y0, x1, y1], radius=8, fill=(255,255,255,235), outline=(60,60,60,255), width=2)
+                        try:
+                            font_group = ImageFont.truetype("DejaVuSans.ttf", 18)
+                        except Exception:
+                            font_group = ImageFont.load_default()
+                        text = f"🏭 {g_label}"
+                        tb = draw.textbbox((0,0), text, font=font_group)
+                        tw = tb[2]-tb[0]; th = tb[3]-tb[1]
+                        tx = int(x0 + (marker_w - tw)/2)
+                        ty = int(y0 + (marker_h - th)/2)
+                        draw.text((tx, ty), text, fill=(20,20,20,255), font=font_group)
+                except Exception:
+                    pass
+
                 draw = ImageDraw.Draw(base_img)
                 # Larger font for better readability
                 BOX_FONT_SIZE = 20
@@ -1035,16 +1171,15 @@ div.leaflet-container {background: #f2f2f3 !important;}
                 # Present snapshot full width (base selector moved to top bar)
                 img = base_img  # for coordinate capture
                 coords = streamlit_image_coordinates(img, key="meas_img", width=w)
-                if st.session_state['placement_mode'] and coords is not None and st.session_state.get('placing_process_idx') is not None:
-                    x_px, y_px = coords['x'], coords['y']
-                    lon_new, lat_new = snapshot_pixel_to_lonlat(x_px, y_px, st.session_state['map_center'][::-1], st.session_state['map_zoom'], w, h)
-                    try:
-                        pidx = st.session_state['placing_process_idx']
-                        st.session_state['processes'][pidx]['lat'] = round(lat_new, 6)
-                        st.session_state['processes'][pidx]['lon'] = round(lon_new, 6)
-                        st.success(f"Set subprocess coords to ({lat_new:.6f}, {lon_new:.6f})")
-                    except (ValueError, TypeError):
-                        st.error("Failed to set coordinates")
+                # Support placing group from snapshot while locked
+                if coords is not None and st.session_state.get('group_placement_mode') and st.session_state.get('placing_group_idx') is not None:
+                    gpi = st.session_state['placing_group_idx']
+                    # Convert snapshot pixel to lon/lat
+                    lon_new, lat_new = snapshot_pixel_to_lonlat(coords['x'], coords['y'], st.session_state['map_center'][::-1], st.session_state['map_zoom'], w, h)
+                    if 'proc_group_lat' in st.session_state and gpi < len(st.session_state['proc_group_lat']):
+                        st.session_state['proc_group_lat'][gpi] = round(lat_new, 6)
+                        st.session_state['proc_group_lon'][gpi] = round(lon_new, 6)
+                        st.session_state['ui_status_msg'] = f"Set process location (snapshot) to ({lat_new:.6f}, {lon_new:.6f})"
                 if st.session_state['measure_mode']:
                     if coords is not None and len(st.session_state['measure_points']) < 2:
                         st.session_state['measure_points'].append((coords['x'], coords['y']))
