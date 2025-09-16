@@ -538,27 +538,34 @@ div[data-testid=\"stVerticalBlock\"] > div div[data-baseweb=\"select\"] div[role
         # Single wide map container below controls
         map_col = st.container()
         with map_col:
-            # Build map with only the chosen base layer
-            if selected_base == 'Blank':
-                fmap = folium.Map(location=[51.70814085564164, 8.772155163087213], zoom_start=17.5, tiles=None)
-                # Add a transparent 1x1 tile layer colored via CSS overlay not natively supported; skip tiles, map background will be default.
-                # We'll inject simple CSS to set map background to very light gray.
-                st.markdown("""
+            # Use session state to cache the map object to prevent recreation
+            map_key = f"cached_map_{selected_base}"
+            
+            if map_key not in st.session_state:
+                # Build map with only the chosen base layer
+                if selected_base == 'Blank':
+                    fmap = folium.Map(location=[51.70814085564164, 8.772155163087213], zoom_start=17.5, tiles=None)
+                    # Add a transparent 1x1 tile layer colored via CSS overlay not natively supported; skip tiles, map background will be default.
+                    # We'll inject simple CSS to set map background to very light gray.
+                    st.markdown("""
 <style>
 div.leaflet-container {background: #f2f2f3 !important;}
 </style>
 """, unsafe_allow_html=True)
-            elif selected_base == 'Satellite':
-                fmap = folium.Map(location=[51.70814085564164, 8.772155163087213], zoom_start=17.5, tiles=None)
-                folium.TileLayer(
-                    tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-                    attr='Esri WorldImagery',
-                    name='Satellite'
-                ).add_to(fmap)
-            elif selected_base == 'Positron':
-                fmap = folium.Map(location=[51.70814085564164, 8.772155163087213], zoom_start=17.5, tiles='CartoDB positron')
+                elif selected_base == 'Satellite':
+                    fmap = folium.Map(location=[51.70814085564164, 8.772155163087213], zoom_start=17.5, tiles=None)
+                    folium.TileLayer(
+                        tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+                        attr='Esri WorldImagery',
+                        name='Satellite'
+                    ).add_to(fmap)
+                elif selected_base == 'Positron':
+                    fmap = folium.Map(location=[51.70814085564164, 8.772155163087213], zoom_start=17.5, tiles='CartoDB positron')
+                else:
+                    fmap = folium.Map(location=[51.70814085564164, 8.772155163087213], zoom_start=17.5, tiles='OpenStreetMap')
+                st.session_state[map_key] = fmap
             else:
-                fmap = folium.Map(location=[51.70814085564164, 8.772155163087213], zoom_start=17.5, tiles='OpenStreetMap')
+                fmap = st.session_state[map_key]
             # Feature groups for overlays
             process_fg = folium.FeatureGroup(name='Processes', show=True)
             connection_fg = folium.FeatureGroup(name='Connections', show=True)
@@ -635,7 +642,7 @@ div.leaflet-container {background: #f2f2f3 !important;}
                 key="selector_map_stable",
                 width=MAP_WIDTH,
                 height=MAP_HEIGHT,
-                returned_objects=["center","zoom","last_clicked"],
+                returned_objects=["last_clicked"],
                 use_container_width=False
             )
             if (
@@ -654,12 +661,7 @@ div.leaflet-container {background: #f2f2f3 !important;}
             # Only save position changes, don't force update the map view
             # This prevents the oscillation by not feeding the map position back to itself
             # But save the current position for when we need to lock the map
-            if fmap_data and 'center' in fmap_data and 'zoom' in fmap_data:
-                c = fmap_data['center']
-                new_center = [c['lat'], c['lng']] if isinstance(c, dict) else c
-                new_zoom = fmap_data['zoom']
-                st.session_state['current_map_center'] = new_center
-                st.session_state['current_map_zoom'] = new_zoom
+            # Do NOT update session_state for center/zoom here to avoid reruns and abrupt jumps
             st.caption("Pan/zoom, then click 'Lock map and analyze' to capture a snapshot.")
     else:
         # Analysis mode
