@@ -123,7 +123,7 @@ MAP_HEIGHT = 860  # taller snapshot for more vertical space
 
 # Tile templates for snapshot capture (static)
 TILE_TEMPLATES = {
-    'OpenStreetMap': 'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    'OpenStreetMap': 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
     'Positron': 'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
     'Satellite': 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
 }
@@ -199,15 +199,28 @@ with left:
                             smap.add_marker(marker)
                         except (RuntimeError, OSError):
                             pass
-                        img_layer = smap.render(zoom=new_zoom)
+                        img_layer = smap.render(zoom=int(new_zoom))
+                        if img_layer is None:
+                            st.error(f"Failed to render {layer_name} map layer")
+                            continue
                         buf_l = BytesIO()
                         img_layer.save(buf_l, format='PNG')
-                        snapshots[layer_name] = buf_l.getvalue()
+                        snapshot_data = buf_l.getvalue()
+                        if len(snapshot_data) == 0:
+                            st.error(f"Empty image data for {layer_name}")
+                            continue
+                        snapshots[layer_name] = snapshot_data
+                        st.success(f"Successfully captured {layer_name} ({len(snapshot_data)} bytes)")
                     st.session_state['map_snapshots'] = snapshots
                     # Legacy single snapshot retains OSM for backward compatibility
                     st.session_state['map_snapshot'] = snapshots.get('OpenStreetMap')
                 except RuntimeError as gen_err:
                     st.session_state['ui_status_msg'] = f"Capture failed: {gen_err}"
+                    st.error(f"Map capture error: {gen_err}")
+                    st.rerun()
+                except Exception as e:
+                    st.session_state['ui_status_msg'] = f"Unexpected error: {e}"
+                    st.error(f"Unexpected map error: {e}")
                     st.rerun()
             st.session_state['map_locked'] = True
             # Freeze analyze base only if user hasn't previously switched in Analyze; preserve separate map selection
