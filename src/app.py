@@ -247,6 +247,13 @@ with left:
     else:  # Analyze mode
         col_unlock, col_add = st.columns([1,1])
         if col_unlock.button("Unlock map and select", key="btn_unlock_select"):
+            # Preserve current locked map position for seamless transition
+            if st.session_state.get('map_center') and st.session_state.get('map_zoom'):
+                st.session_state['selector_center'] = st.session_state['map_center'][:]
+                st.session_state['selector_zoom'] = st.session_state['map_zoom']
+                st.session_state['current_map_center'] = st.session_state['map_center'][:]
+                st.session_state['current_map_zoom'] = st.session_state['map_zoom']
+            
             st.session_state.update({
                 'ui_mode_radio': 'Select Map',
                 'map_locked': False,
