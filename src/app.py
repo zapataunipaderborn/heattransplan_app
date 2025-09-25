@@ -130,8 +130,8 @@ div.streamlit-expanderHeader {padding:0.3rem 0.5rem !important;}
 st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 st.title("Heat Integration analysis")
 
-MAP_WIDTH = 1200  # Reduced width (was 1500)
-MAP_HEIGHT = 700   # Reduced height (was 860)
+MAP_WIDTH = 1300  # Increased width to use more space (was 1200)
+MAP_HEIGHT = 700   # Keep same height
 
 # Tile templates for snapshot capture (static)
 TILE_TEMPLATES = {
@@ -183,7 +183,7 @@ if 'proc_group_coordinates' not in st.session_state: st.session_state['proc_grou
 if 'current_base' not in st.session_state:
     st.session_state['current_base'] = 'OpenStreetMap'
 
-left, right = st.columns([3, 5], gap="small")  # More balanced layout, smaller right side
+left, right = st.columns([2, 6], gap="small")  # Much smaller left panel, much wider map area
 
 with left:
     # Compact mode buttons side by side
@@ -1056,9 +1056,9 @@ div.leaflet-container {background: #f2f2f3 !important;}
                             center_px = w / 2  # Center of map width
                             center_py = h / 2  # Center of map height
                             
-                            # Create a large overlay box (75% of map size, well centered)
-                            overlay_w = int(w * 0.75)
-                            overlay_h = int(h * 0.75)
+                            # Create a larger overlay box (85% of map size, well centered)
+                            overlay_w = int(w * 0.92)  # Increased from 75% to 85%
+                            overlay_h = int(h * 0.92)  # Increased from 75% to 85%
                             
                             # Center the overlay in the middle of the map
                             overlay_x0 = int(center_px - overlay_w / 2)
