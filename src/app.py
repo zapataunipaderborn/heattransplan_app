@@ -1035,18 +1035,16 @@ div.leaflet-container {background: #f2f2f3 !important;}
                         try:
                             lat_f = float(coords_data['lat'])
                             lon_f = float(coords_data['lon'])
-                            center_px, center_py = snapshot_lonlat_to_pixel(
-                                lon_f, lat_f,
-                                (st.session_state['map_center'][1], st.session_state['map_center'][0]),
-                                st.session_state['map_zoom'],
-                                w, h
-                            )
+                            
+                            # Center the overlay in the middle of the map, not on the process position
+                            center_px = w / 2  # Center of map width
+                            center_py = h / 2  # Center of map height
                             
                             # Create a large overlay box (75% of map size, well centered)
                             overlay_w = int(w * 0.75)
                             overlay_h = int(h * 0.75)
                             
-                            # Center the overlay on the process position
+                            # Center the overlay in the middle of the map
                             overlay_x0 = int(center_px - overlay_w / 2)
                             overlay_y0 = int(center_py - overlay_h / 2)
                             overlay_x1 = overlay_x0 + overlay_w
@@ -1059,22 +1057,10 @@ div.leaflet-container {background: #f2f2f3 !important;}
                             overlay_x1 = min(w - margin, overlay_x1)
                             overlay_y1 = min(h - margin, overlay_y1)
                             
-                            # Recalculate center if bounds were adjusted
-                            if overlay_x1 - overlay_x0 != overlay_w or overlay_y1 - overlay_y0 != overlay_h:
-                                # Re-center within available space
-                                available_w = w - 2 * margin
-                                available_h = h - 2 * margin
-                                overlay_w = min(overlay_w, available_w)
-                                overlay_h = min(overlay_h, available_h)
-                                overlay_x0 = margin + (available_w - overlay_w) // 2
-                                overlay_y0 = margin + (available_h - overlay_h) // 2
-                                overlay_x1 = overlay_x0 + overlay_w
-                                overlay_y1 = overlay_y0 + overlay_h
-                            
                             # Draw very light grey semi-transparent overlay
                             draw.rectangle([overlay_x0, overlay_y0, overlay_x1, overlay_y1], 
-                                         fill=(230, 230, 230, 80),  # Much lighter grey with low opacity
-                                         outline=(200, 200, 200, 150), 
+                                         fill=(240, 240, 240, 60),  # Almost white with very low opacity
+                                         outline=(220, 220, 220, 120), 
                                          width=1)
                                          
                             # Optional: Add a subtle label in the corner
