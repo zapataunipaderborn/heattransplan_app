@@ -421,6 +421,52 @@ with left:
 
                 if not g_list:
                     st.caption("(No processes in this group)")
+                
+                # Add information section for the main process (group level)
+                st.markdown("**Information:**")
+                info_row1_cols = st.columns([1, 1, 1])
+                
+                # Initialize process coordinates and data if not exists
+                if 'proc_group_coordinates' not in st.session_state:
+                    st.session_state['proc_group_coordinates'] = {}
+                if g not in st.session_state['proc_group_coordinates']:
+                    st.session_state['proc_group_coordinates'][g] = {'lat': '', 'lon': '', 'hours': ''}
+                
+                current_coords = st.session_state['proc_group_coordinates'][g]
+                new_lat = info_row1_cols[0].text_input("Latitude", value=str(current_coords.get('lat', '') or ''), key=f"group_lat_{g}")
+                new_lon = info_row1_cols[1].text_input("Longitude", value=str(current_coords.get('lon', '') or ''), key=f"group_lon_{g}")
+                new_hours = info_row1_cols[2].text_input("Hours", value=str(current_coords.get('hours', '') or ''), key=f"group_hours_{g}")
+                
+                # Update coordinates and hours in session state
+                st.session_state['proc_group_coordinates'][g]['lat'] = new_lat if new_lat.strip() else ''
+                st.session_state['proc_group_coordinates'][g]['lon'] = new_lon if new_lon.strip() else ''
+                st.session_state['proc_group_coordinates'][g]['hours'] = new_hours if new_hours.strip() else ''
+                
+                # Next Processes dropdown for the group
+                if 'proc_group_next' not in st.session_state:
+                    st.session_state['proc_group_next'] = {}
+                if g not in st.session_state['proc_group_next']:
+                    st.session_state['proc_group_next'][g] = ''
+                
+                # Build option list of other process group names
+                all_group_names = st.session_state.get('proc_group_names', [])
+                if len(all_group_names) <= 1:
+                    st.caption("To connect processes, add more than one process group")
+                    st.session_state['proc_group_next'][g] = ''
+                else:
+                    # Create options excluding current group
+                    options = [name for idx, name in enumerate(all_group_names) if idx != g]
+                    
+                    # Current selection
+                    current_next = st.session_state['proc_group_next'][g]
+                    default_selection = [current_next] if current_next and current_next in options else []
+                    
+                    selected = st.multiselect("Next Processes", options=options, default=default_selection, key=f"group_next_multi_{g}")
+                    # Store as comma-separated names  
+                    st.session_state['proc_group_next'][g] = ", ".join(selected) if selected else ''
+                
+                st.markdown("**Subprocesses:**")
+                
                 for local_idx, i in enumerate(g_list):
                     p = st.session_state['processes'][i]
                     # Per-subprocess header (toggle | name | size | place | delete)
@@ -488,15 +534,11 @@ with left:
                         p['connm'] = r1c3.text_input("Product ṁ", value=p.get('connm',''), key=f"p_connm_{i}")
                         p['conncp'] = r1c4.text_input("Product cp", value=p.get('conncp',''), key=f"p_conncp_{i}")
 
-                        r2c1,r2c2,r2c3 = st.columns([1,1,3])
-                        p['lat'] = r2c1.text_input("Latitude", value=str(p.get('lat') or ''), key=f"p_lat_{i}")
-                        p['lon'] = r2c2.text_input("Longitude", value=str(p.get('lon') or ''), key=f"p_lon_{i}")
                         # Multi-select for next processes (exclude self)
                         all_procs = st.session_state['processes']
                         if len(all_procs) <= 1:
-                            with r2c3:
-                                st.caption("To connect processes, add more than one")
-                                p['next'] = ''
+                            st.caption("To connect processes, add more than one")
+                            p['next'] = ''
                         else:
                             # Build option list of other subprocess names
                             options = []
@@ -509,7 +551,7 @@ with left:
                             current_tokens = [t.strip() for t in (p.get('next','') or '').replace(';',',').replace('|',',').split(',') if t.strip()]
                             # Keep only those present in options
                             preselect = [t for t in current_tokens if t in options]
-                            selected = r2c3.multiselect("Next processes", options=options, default=preselect, key=f"p_next_multi_{i}")
+                            selected = st.multiselect("Next processes", options=options, default=preselect, key=f"p_next_multi_{i}")
                             # Store as comma-separated names
                             p['next'] = ", ".join(selected)
 
