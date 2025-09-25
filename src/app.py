@@ -67,30 +67,42 @@ st.set_page_config(page_title="Heat Integration analysis", layout="wide")
 st.markdown("""
 <style>
 /* Base tweaks */
-.block-container {padding-top:0.6rem; padding-bottom:0.5rem;}
+.block-container {padding-top:0.4rem; padding-bottom:0.3rem;}
 div[data-testid="column"] > div:has(> div.map-region) {margin-top:0;}
 .map-control-row {margin-bottom:0.25rem;}
 
+/* Make everything smaller by default */
+html, body, .stApp {font-size:13px !important;}
+.stMarkdown p, .stMarkdown span, .stMarkdown li {font-size:13px !important;}
+.stButton button {font-size:12px !important; padding:0.2rem 0.4rem !important;}
+.stTextInput input, .stNumberInput input {font-size:12px !important; padding:0.2rem 0.3rem !important;}
+.stRadio > div[role=radio] label {font-size:12px !important;}
+.stDataFrame, .stDataFrame table {font-size:11px !important;}
+.stSlider {font-size:11px !important;}
+
+/* Title smaller */
+h1 {font-size: 1.8rem !important; margin-bottom: 0.5rem !important;}
+
 /* Responsive typography & control sizing */
 @media (max-width: 1500px){
-    html, body, .stApp {font-size:14px;}
-    .stMarkdown p, .stMarkdown span, .stMarkdown li {font-size:14px !important;}
-    .stButton button {font-size:13px !important; padding:0.25rem 0.55rem !important;}
-    .stTextInput input, .stNumberInput input {font-size:13px !important; padding:0.25rem 0.4rem !important;}
-    .stRadio > div[role=radio] label {font-size:13px !important;}
+    html, body, .stApp {font-size:12px !important;}
+    .stMarkdown p, .stMarkdown span, .stMarkdown li {font-size:12px !important;}
+    .stButton button {font-size:11px !important; padding:0.2rem 0.4rem !important;}
+    .stTextInput input, .stNumberInput input {font-size:11px !important; padding:0.2rem 0.3rem !important;}
+    .stRadio > div[role=radio] label {font-size:11px !important;}
 }
 @media (max-width: 1200px){
-    html, body, .stApp {font-size:13px;}
-    .stMarkdown p, .stMarkdown span, .stMarkdown li {font-size:13px !important;}
-    .stButton button {font-size:12px !important;}
-    .stTextInput input, .stNumberInput input {font-size:12px !important;}
+    html, body, .stApp {font-size:11px !important;}
+    .stMarkdown p, .stMarkdown span, .stMarkdown li {font-size:11px !important;}
+    .stButton button {font-size:10px !important;}
+    .stTextInput input, .stNumberInput input {font-size:10px !important;}
 }
 @media (max-width: 1000px){
-    html, body, .stApp {font-size:12px;}
-    .stMarkdown p, .stMarkdown span, .stMarkdown li {font-size:12px !important;}
-    .stButton button {font-size:11px !important; padding:0.2rem 0.45rem !important;}
-    .stTextInput input, .stNumberInput input {font-size:11px !important; padding:0.2rem 0.35rem !important;}
-    .stDataFrame, .stDataFrame table {font-size:11px !important;}
+    html, body, .stApp {font-size:10px !important;}
+    .stMarkdown p, .stMarkdown span, .stMarkdown li {font-size:10px !important;}
+    .stButton button {font-size:9px !important; padding:0.15rem 0.35rem !important;}
+    .stTextInput input, .stNumberInput input {font-size:9px !important; padding:0.15rem 0.25rem !important;}
+    .stDataFrame, .stDataFrame table {font-size:9px !important;}
 }
 
 /* Make map & snapshot adapt on narrow screens */
@@ -115,11 +127,11 @@ div.streamlit-expanderHeader {padding:0.3rem 0.5rem !important;}
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<div style='height:22px'></div>", unsafe_allow_html=True)
+st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 st.title("Heat Integration analysis")
 
-MAP_WIDTH = 1500  # widened map (extends to the right)
-MAP_HEIGHT = 860  # taller snapshot for more vertical space
+MAP_WIDTH = 1200  # Reduced width (was 1500)
+MAP_HEIGHT = 700   # Reduced height (was 860)
 
 # Tile templates for snapshot capture (static)
 TILE_TEMPLATES = {
@@ -171,7 +183,7 @@ if 'proc_group_coordinates' not in st.session_state: st.session_state['proc_grou
 if 'current_base' not in st.session_state:
     st.session_state['current_base'] = 'OpenStreetMap'
 
-left, right = st.columns([2.4, 5.6], gap="small")  # wider subprocess panel, smaller gap to map
+left, right = st.columns([3, 5], gap="small")  # More balanced layout, smaller right side
 
 with left:
     # Compact mode buttons side by side
@@ -575,10 +587,14 @@ with right:
             st.session_state['current_base'] = _map_base
         st.markdown("""
 <style>
-/* Compact selectboxes */
-div[data-testid=\"stVerticalBlock\"] > div div[data-baseweb=\"select\"] {min-height:32px;}
-div[data-testid=\"stVerticalBlock\"] > div div[data-baseweb=\"select\"] * {font-size:11px;}
-div[data-testid=\"stVerticalBlock\"] > div div[data-baseweb=\"select\"] div[role=\"combobox\"] {padding:2px 6px;}
+/* Compact selectboxes and all form elements */
+div[data-testid=\"stVerticalBlock\"] > div div[data-baseweb=\"select\"] {min-height:28px !important;}
+div[data-testid=\"stVerticalBlock\"] > div div[data-baseweb=\"select\"] * {font-size:10px !important;}
+div[data-testid=\"stVerticalBlock\"] > div div[data-baseweb=\"select\"] div[role=\"combobox\"] {padding:1px 4px !important;}
+/* Make all inputs more compact */
+.stTextInput > div > div > input {height: 28px !important;}
+.stNumberInput > div > div > input {height: 28px !important;}
+.stSlider > div > div > div {height: 20px !important;}
 </style>
 """, unsafe_allow_html=True)
         selected_base = st.session_state.get('current_base', 'OpenStreetMap')
@@ -828,8 +844,8 @@ div.leaflet-container {background: #f2f2f3 !important;}
 
                 # --- Overlay subprocess boxes & connecting arrows on snapshot ---
                 draw = ImageDraw.Draw(base_img)
-                # Larger font for better readability
-                BOX_FONT_SIZE = 20
+                # Smaller font for more compact display
+                BOX_FONT_SIZE = 16  # Reduced from 20
                 try:
                     font = ImageFont.truetype("DejaVuSans.ttf", BOX_FONT_SIZE)
                 except (OSError, IOError):
