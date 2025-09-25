@@ -279,7 +279,7 @@ with left:
             st.session_state['proc_group_names'].append(f"Process {len(st.session_state['proc_groups'])}")
             if 'proc_group_expanded' not in st.session_state:
                 st.session_state['proc_group_expanded'] = []
-            st.session_state['proc_group_expanded'].append(True)
+            st.session_state['proc_group_expanded'].append(False)  # Start collapsed by default
             st.session_state['ui_status_msg'] = "Added new empty process"
             st.rerun()
     mode = st.session_state['ui_mode_radio']
@@ -309,9 +309,9 @@ with left:
             # Align names & expanded arrays to group list length
             group_count = len(st.session_state['proc_groups'])
             if 'proc_group_expanded' not in st.session_state:
-                st.session_state['proc_group_expanded'] = [True]*group_count
+                st.session_state['proc_group_expanded'] = [False]*group_count  # Start collapsed by default
             elif len(st.session_state['proc_group_expanded']) != group_count:
-                st.session_state['proc_group_expanded'] = [st.session_state['proc_group_expanded'][g] if g < len(st.session_state['proc_group_expanded']) else True for g in range(group_count)]
+                st.session_state['proc_group_expanded'] = [st.session_state['proc_group_expanded'][g] if g < len(st.session_state['proc_group_expanded']) else False for g in range(group_count)]
             if 'proc_group_names' not in st.session_state:
                 st.session_state['proc_group_names'] = [f"Group {g+1}" for g in range(group_count)]
             elif len(st.session_state['proc_group_names']) != group_count:
@@ -1042,9 +1042,9 @@ div.leaflet-container {background: #f2f2f3 !important;}
                                 w, h
                             )
                             
-                            # Create a large overlay box (80% of map size)
-                            overlay_w = int(w * 0.8)
-                            overlay_h = int(h * 0.8)
+                            # Create a large overlay box (75% of map size, well centered)
+                            overlay_w = int(w * 0.75)
+                            overlay_h = int(h * 0.75)
                             
                             # Center the overlay on the process position
                             overlay_x0 = int(center_px - overlay_w / 2)
@@ -1052,17 +1052,30 @@ div.leaflet-container {background: #f2f2f3 !important;}
                             overlay_x1 = overlay_x0 + overlay_w
                             overlay_y1 = overlay_y0 + overlay_h
                             
-                            # Ensure overlay stays within map bounds
-                            overlay_x0 = max(0, overlay_x0)
-                            overlay_y0 = max(0, overlay_y0)
-                            overlay_x1 = min(w, overlay_x1)
-                            overlay_y1 = min(h, overlay_y1)
+                            # Ensure overlay stays within map bounds with some padding
+                            margin = 20
+                            overlay_x0 = max(margin, overlay_x0)
+                            overlay_y0 = max(margin, overlay_y0)
+                            overlay_x1 = min(w - margin, overlay_x1)
+                            overlay_y1 = min(h - margin, overlay_y1)
                             
-                            # Draw semi-transparent light grey overlay
+                            # Recalculate center if bounds were adjusted
+                            if overlay_x1 - overlay_x0 != overlay_w or overlay_y1 - overlay_y0 != overlay_h:
+                                # Re-center within available space
+                                available_w = w - 2 * margin
+                                available_h = h - 2 * margin
+                                overlay_w = min(overlay_w, available_w)
+                                overlay_h = min(overlay_h, available_h)
+                                overlay_x0 = margin + (available_w - overlay_w) // 2
+                                overlay_y0 = margin + (available_h - overlay_h) // 2
+                                overlay_x1 = overlay_x0 + overlay_w
+                                overlay_y1 = overlay_y0 + overlay_h
+                            
+                            # Draw very light grey semi-transparent overlay
                             draw.rectangle([overlay_x0, overlay_y0, overlay_x1, overlay_y1], 
-                                         fill=(200, 200, 200, 100),  # Light grey with transparency
-                                         outline=(150, 150, 150, 200), 
-                                         width=2)
+                                         fill=(230, 230, 230, 80),  # Much lighter grey with low opacity
+                                         outline=(200, 200, 200, 150), 
+                                         width=1)
                                          
                             # Optional: Add a subtle label in the corner
                             if group_idx < len(st.session_state.get('proc_group_names', [])):
@@ -1077,18 +1090,20 @@ div.leaflet-container {background: #f2f2f3 !important;}
                                     label_h = 10
                                 
                                 # Place label in top-left corner of overlay with padding
-                                label_x = overlay_x0 + 10
-                                label_y = overlay_y0 + 10
+                                label_x = overlay_x0 + 15
+                                label_y = overlay_y0 + 15
                                 
-                                # Background for label
-                                draw.rectangle([label_x-5, label_y-2, label_x+label_w+5, label_y+label_h+2], 
-                                             fill=(255, 255, 255, 180))
+                                # Very subtle background for label
+                                draw.rectangle([label_x-5, label_y-3, label_x+label_w+5, label_y+label_h+3], 
+                                             fill=(255, 255, 255, 120), 
+                                             outline=(220, 220, 220, 100), 
+                                             width=1)
                                 
-                                # Draw label text
+                                # Draw label text in subtle grey
                                 if font:
-                                    draw.text((label_x, label_y), overlay_label, fill=(100, 100, 100, 255), font=font)
+                                    draw.text((label_x, label_y), overlay_label, fill=(120, 120, 120, 200), font=font)
                                 else:
-                                    draw.text((label_x, label_y), overlay_label, fill=(100, 100, 100, 255))
+                                    draw.text((label_x, label_y), overlay_label, fill=(120, 120, 120, 200))
                                     
                         except (ValueError, TypeError):
                             continue
