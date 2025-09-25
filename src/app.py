@@ -177,8 +177,18 @@ with left:
     if mode_current == "Select Map":
         col_lock = st.columns([1])[0]
         if col_lock.button("Lock map and analyze", key="btn_lock_analyze"):
-            new_center = st.session_state['selector_center'][:]
-            new_zoom = st.session_state['selector_zoom']
+            # Use current live map state instead of stored selector values
+            current_center = st.session_state.get('current_map_center')
+            current_zoom = st.session_state.get('current_map_zoom')
+            
+            # Fallback to selector values if current state not available
+            if current_center is None or current_zoom is None:
+                new_center = st.session_state['selector_center'][:]
+                new_zoom = st.session_state['selector_zoom']
+            else:
+                new_center = current_center[:]
+                new_zoom = current_zoom
+                
             selected_base_now = st.session_state.get('current_base', 'OpenStreetMap')
             existing_snaps = st.session_state.get('map_snapshots', {})
             regenerate = (
@@ -188,10 +198,12 @@ with left:
                 (selected_base_now not in existing_snaps)  # ensure chosen base available
             )
             st.session_state['map_center'] = new_center
-            st.session_state['map_zoom'] = new_zoom
+            st.session_state['map_zoom'] = new_zoom  # Store exact zoom for coordinate calculations
             if regenerate:
                 try:
                     snapshots = {}
+                    # Use rounded zoom for tile rendering but keep exact zoom for coordinates
+                    render_zoom = round(float(new_zoom))
                     for layer_name, template in TILE_TEMPLATES.items():
                         smap = StaticMap(MAP_WIDTH, MAP_HEIGHT, url_template=template)
                         try:
@@ -199,7 +211,8 @@ with left:
                             smap.add_marker(marker)
                         except (RuntimeError, OSError):
                             pass
-                        img_layer = smap.render(zoom=int(new_zoom))
+                        # Use rounded zoom instead of truncated to better match Folium view
+                        img_layer = smap.render(zoom=render_zoom)
                         if img_layer is None:
                             st.error(f"Failed to render {layer_name} map layer")
                             continue
@@ -657,6 +670,12 @@ div.leaflet-container {background: #f2f2f3 !important;}
                 returned_objects=["center","zoom","last_clicked"],
                 use_container_width=False
             )
+            
+            # Store current live map state for potential snapshot capture
+            if fmap_data and fmap_data.get('center') and fmap_data.get('zoom'):
+                st.session_state['current_map_center'] = [fmap_data['center']['lat'], fmap_data['center']['lng']]
+                st.session_state['current_map_zoom'] = fmap_data['zoom']
+            
             if (
                 st.session_state.get('placing_process_idx') is not None and
                 fmap_data and fmap_data.get('last_clicked')
