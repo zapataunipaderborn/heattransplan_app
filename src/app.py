@@ -640,10 +640,27 @@ div.leaflet-container {background: #f2f2f3 !important;}
             process_fg = folium.FeatureGroup(name='Processes', show=True)
             connection_fg = folium.FeatureGroup(name='Connections', show=True)
             
-            # Add subprocess markers
+            # Add subprocess markers (only when parent group is expanded)
+            proc_groups = st.session_state.get('proc_groups', [])
+            group_expanded = st.session_state.get('proc_group_expanded', [])
+            
+            # Create mapping of subprocess index to group index
+            subprocess_to_group_folium = {}
+            for group_idx, group_subprocess_list in enumerate(proc_groups):
+                for subprocess_idx in group_subprocess_list:
+                    subprocess_to_group_folium[subprocess_idx] = group_idx
+            
             for idx, p in enumerate(st.session_state['processes']):
                 lat = p.get('lat'); lon = p.get('lon')
                 if lat not in (None, "") and lon not in (None, ""):
+                    # Check if this subprocess's parent group is expanded
+                    parent_group_idx = subprocess_to_group_folium.get(idx)
+                    if parent_group_idx is not None:
+                        # Only show subprocess if parent group is expanded
+                        if (parent_group_idx >= len(group_expanded) or 
+                            not group_expanded[parent_group_idx]):
+                            continue  # Skip this subprocess - parent group is collapsed
+                    
                     try:
                         label = p.get('name') or f"P{idx+1}"
                         html = f"""<div style='background:#e0f2ff;border:2px solid #1769aa;padding:5px 10px;font-size:15px;font-weight:600;color:#0a3555;border-radius:6px;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,0.35);'>📦 {label}</div>"""
@@ -656,11 +673,15 @@ div.leaflet-container {background: #f2f2f3 !important;}
                     except (ValueError, TypeError):
                         pass
             
-            # Add main process (group) markers
+            # Add main process (group) markers (only when collapsed)
             group_coords = st.session_state.get('proc_group_coordinates', {})
             group_names = st.session_state.get('proc_group_names', [])
             for group_idx, coords_data in group_coords.items():
                 if group_idx < len(group_names):
+                    # Only show main process marker when group is collapsed
+                    if (group_idx < len(group_expanded) and group_expanded[group_idx]):
+                        continue  # Skip - group is expanded
+                        
                     lat = coords_data.get('lat')
                     lon = coords_data.get('lon')
                     if lat is not None and lon is not None:
@@ -857,10 +878,99 @@ div.leaflet-container {background: #f2f2f3 !important;}
                 # First pass: compute positions & bounding boxes
                 positioned = []  # list of dicts with: idx,label,center,box,(next_raw)
                 name_index = {}  # map lowercase name -> list of indices (to handle duplicates)
+                
+                # Create mapping of subprocess index to group index
+                subprocess_to_group = {}
+                proc_groups = st.session_state.get('proc_groups', [])
+                for group_idx, group_subprocess_list in enumerate(proc_groups):
+                    for subprocess_idx in group_subprocess_list:
+                        subprocess_to_group[subprocess_idx] = group_idx
+                
+                group_expanded = st.session_state.get('proc_group_expanded', [])
+                
+                # First pass: draw large grey overlays for expanded processes BEHIND everything
+                group_coords = st.session_state.get('proc_group_coordinates', {})
+                for group_idx, coords_data in group_coords.items():
+                    # Only draw overlay if process is expanded
+                    if (group_idx < len(group_expanded) and 
+                        group_expanded[group_idx]):
+                        try:
+                            lat_f = float(coords_data.get('lat', 0))
+                            lon_f = float(coords_data.get('lon', 0))
+                            center_px, center_py = snapshot_lonlat_to_pixel(
+                                lon_f, lat_f,
+                                (st.session_state['map_center'][1], st.session_state['map_center'][0]),
+                                st.session_state['map_zoom'],
+                                w, h
+                            )
+                            
+                            # Create a large semi-transparent overlay area
+                            overlay_w = int(w * 0.4)  # Increased from 30% to 40%
+                            overlay_h = int(h * 0.85)  # Increased from 75% to 85%
+                            
+                            # Center the overlay in the middle of the map
+                            overlay_x0 = int(center_px - overlay_w / 2)
+                            overlay_y0 = int(center_py - overlay_h / 2)
+                            overlay_x1 = overlay_x0 + overlay_w
+                            overlay_y1 = overlay_y0 + overlay_h
+                            
+                            # Ensure overlay stays within map bounds with some padding
+                            margin = 20
+                            overlay_x0 = max(margin, overlay_x0)
+                            overlay_y0 = max(margin, overlay_y0)
+                            overlay_x1 = min(w - margin, overlay_x1)
+                            overlay_y1 = min(h - margin, overlay_y1)
+                            
+                            # Draw very light grey semi-transparent overlay
+                            draw.rectangle([overlay_x0, overlay_y0, overlay_x1, overlay_y1], 
+                                         fill=(250, 250, 250, 40),  # Almost white with very low opacity
+                                         outline=(245, 245, 245, 80), 
+                                         width=1)
+                                         
+                            # Optional: Add a subtle label in the corner
+                            if group_idx < len(st.session_state.get('proc_group_names', [])):
+                                group_name = st.session_state['proc_group_names'][group_idx]
+                                overlay_label = f"Process Area: {group_name}"
+                                if font:
+                                    label_bbox = draw.textbbox((0, 0), overlay_label, font=font)
+                                    label_w = label_bbox[2] - label_bbox[0]
+                                    label_h = label_bbox[3] - label_bbox[1]
+                                else:
+                                    label_w = len(overlay_label) * 6
+                                    label_h = 10
+                                
+                                # Place label in top-left corner of overlay with padding
+                                label_x = overlay_x0 + 15
+                                label_y = overlay_y0 + 15
+                                
+                                # Very subtle background for label
+                                draw.rectangle([label_x-5, label_y-3, label_x+label_w+5, label_y+label_h+3], 
+                                             fill=(255, 255, 255, 120), 
+                                             outline=(220, 220, 220, 100), 
+                                             width=1)
+                                
+                                # Draw label text in subtle grey
+                                if font:
+                                    draw.text((label_x, label_y), overlay_label, fill=(120, 120, 120, 200), font=font)
+                                else:
+                                    draw.text((label_x, label_y), overlay_label, fill=(120, 120, 120, 200))
+                                    
+                        except (ValueError, TypeError):
+                            continue
+                
                 for i, p in enumerate(st.session_state['processes']):
                     lat = p.get('lat'); lon = p.get('lon')
                     if lat in (None, "", "None") or lon in (None, "", "None"):
                         continue
+                    
+                    # Check if this subprocess's parent group is expanded
+                    parent_group_idx = subprocess_to_group.get(i)
+                    if parent_group_idx is not None:
+                        # Only show subprocess if parent group is expanded
+                        if (parent_group_idx >= len(group_expanded) or 
+                            not group_expanded[parent_group_idx]):
+                            continue  # Skip this subprocess - parent group is collapsed
+                    
                     try:
                         lat_f = float(lat); lon_f = float(lon)
                         proc_px, proc_py = snapshot_lonlat_to_pixel(
@@ -902,10 +1012,14 @@ div.leaflet-container {background: #f2f2f3 !important;}
                     except (ValueError, TypeError):
                         continue
 
-                # Add group rectangles
+                # Add group rectangles (only when collapsed)
                 group_coords = st.session_state.get('proc_group_coordinates', {})
                 for group_idx, coords_data in group_coords.items():
                     if group_idx < len(st.session_state.get('proc_group_names', [])):
+                        # Only show main process rectangle when group is collapsed
+                        if (group_idx < len(group_expanded) and group_expanded[group_idx]):
+                            continue  # Skip - group is expanded, grey overlay will be shown instead
+                            
                         lat = coords_data.get('lat')
                         lon = coords_data.get('lon')
                         if lat is not None and lon is not None:
@@ -1197,78 +1311,6 @@ div.leaflet-container {background: #f2f2f3 !important;}
                         bot_text = "  |  ".join(bot_components)
                         _label_centered(top_text, sx, inbound_top - 6, above=True)
                         _label_centered(bot_text, sx, outbound_bottom + 6, above=False)
-                
-                # Final pass: draw large grey overlays for expanded processes ON TOP of everything
-                group_coords = st.session_state.get('proc_group_coordinates', {})
-                group_expanded = st.session_state.get('proc_group_expanded', [])
-                for group_idx, coords_data in group_coords.items():
-                    # Only draw overlay if process is expanded
-                    if (group_idx < len(group_expanded) and 
-                        group_expanded[group_idx] and 
-                        coords_data.get('lat') is not None and 
-                        coords_data.get('lon') is not None):
-                        
-                        try:
-                            lat_f = float(coords_data['lat'])
-                            lon_f = float(coords_data['lon'])
-                            
-                            # Center the overlay in the middle of the map, not on the process position
-                            center_px = w / 2  # Center of map width
-                            center_py = h / 2  # Center of map height
-                            
-                            # Create a larger overlay box (85% of map size, well centered)
-                            overlay_w = int(w * 0.85)  # Increased from 75% to 85%
-                            overlay_h = int(h * 0.85)  # Increased from 75% to 85%
-                            
-                            # Center the overlay in the middle of the map
-                            overlay_x0 = int(center_px - overlay_w / 2)
-                            overlay_y0 = int(center_py - overlay_h / 2)
-                            overlay_x1 = overlay_x0 + overlay_w
-                            overlay_y1 = overlay_y0 + overlay_h
-                            
-                            # Ensure overlay stays within map bounds with some padding
-                            margin = 20
-                            overlay_x0 = max(margin, overlay_x0)
-                            overlay_y0 = max(margin, overlay_y0)
-                            overlay_x1 = min(w - margin, overlay_x1)
-                            overlay_y1 = min(h - margin, overlay_y1)
-                            
-                            # Draw very light grey semi-transparent overlay
-                            draw.rectangle([overlay_x0, overlay_y0, overlay_x1, overlay_y1], 
-                                         fill=(250, 250, 250, 40),  # Almost white with very low opacity
-                                         outline=(245, 245, 245, 80), 
-                                         width=1)
-                                         
-                            # Optional: Add a subtle label in the corner
-                            if group_idx < len(st.session_state.get('proc_group_names', [])):
-                                group_name = st.session_state['proc_group_names'][group_idx]
-                                overlay_label = f"Process Area: {group_name}"
-                                if font:
-                                    label_bbox = draw.textbbox((0, 0), overlay_label, font=font)
-                                    label_w = label_bbox[2] - label_bbox[0]
-                                    label_h = label_bbox[3] - label_bbox[1]
-                                else:
-                                    label_w = len(overlay_label) * 6
-                                    label_h = 10
-                                
-                                # Place label in top-left corner of overlay with padding
-                                label_x = overlay_x0 + 15
-                                label_y = overlay_y0 + 15
-                                
-                                # Very subtle background for label
-                                draw.rectangle([label_x-5, label_y-3, label_x+label_w+5, label_y+label_h+3], 
-                                             fill=(255, 255, 255, 120), 
-                                             outline=(220, 220, 220, 100), 
-                                             width=1)
-                                
-                                # Draw label text in subtle grey
-                                if font:
-                                    draw.text((label_x, label_y), overlay_label, fill=(120, 120, 120, 200), font=font)
-                                else:
-                                    draw.text((label_x, label_y), overlay_label, fill=(120, 120, 120, 200))
-                                    
-                        except (ValueError, TypeError):
-                            continue
                 
                 # Present snapshot full width (base selector moved to top bar)
                 img = base_img  # for coordinate capture
