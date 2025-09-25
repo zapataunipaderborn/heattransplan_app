@@ -1038,78 +1038,6 @@ div.leaflet-container {background: #f2f2f3 !important;}
                             end_y = ty - vec_dy * t_t * 1.02
                             _draw_arrow(draw, start_x, start_y, end_x, end_y, color=(0, 0, 0, 245), width=3)
 
-                # New pass: draw large grey overlays for expanded processes
-                group_coords = st.session_state.get('proc_group_coordinates', {})
-                group_expanded = st.session_state.get('proc_group_expanded', [])
-                for group_idx, coords_data in group_coords.items():
-                    # Only draw overlay if process is expanded
-                    if (group_idx < len(group_expanded) and 
-                        group_expanded[group_idx] and 
-                        coords_data.get('lat') is not None and 
-                        coords_data.get('lon') is not None):
-                        
-                        try:
-                            lat_f = float(coords_data['lat'])
-                            lon_f = float(coords_data['lon'])
-                            
-                            # Center the overlay in the middle of the map, not on the process position
-                            center_px = w / 2  # Center of map width
-                            center_py = h / 2  # Center of map height
-                            
-                            # Create a larger overlay box (85% of map size, well centered)
-                            overlay_w = int(w * 0.92)  # Increased from 75% to 85%
-                            overlay_h = int(h * 0.92)  # Increased from 75% to 85%
-                            
-                            # Center the overlay in the middle of the map
-                            overlay_x0 = int(center_px - overlay_w / 2)
-                            overlay_y0 = int(center_py - overlay_h / 2)
-                            overlay_x1 = overlay_x0 + overlay_w
-                            overlay_y1 = overlay_y0 + overlay_h
-                            
-                            # Ensure overlay stays within map bounds with some padding
-                            margin = 20
-                            overlay_x0 = max(margin, overlay_x0)
-                            overlay_y0 = max(margin, overlay_y0)
-                            overlay_x1 = min(w - margin, overlay_x1)
-                            overlay_y1 = min(h - margin, overlay_y1)
-                            
-                            # Draw very light grey semi-transparent overlay
-                            draw.rectangle([overlay_x0, overlay_y0, overlay_x1, overlay_y1], 
-                                         fill=(240, 240, 240, 60),  # Almost white with very low opacity
-                                         outline=(220, 220, 220, 120), 
-                                         width=1)
-                                         
-                            # Optional: Add a subtle label in the corner
-                            if group_idx < len(st.session_state.get('proc_group_names', [])):
-                                group_name = st.session_state['proc_group_names'][group_idx]
-                                overlay_label = f"Process Area: {group_name}"
-                                if font:
-                                    label_bbox = draw.textbbox((0, 0), overlay_label, font=font)
-                                    label_w = label_bbox[2] - label_bbox[0]
-                                    label_h = label_bbox[3] - label_bbox[1]
-                                else:
-                                    label_w = len(overlay_label) * 6
-                                    label_h = 10
-                                
-                                # Place label in top-left corner of overlay with padding
-                                label_x = overlay_x0 + 15
-                                label_y = overlay_y0 + 15
-                                
-                                # Very subtle background for label
-                                draw.rectangle([label_x-5, label_y-3, label_x+label_w+5, label_y+label_h+3], 
-                                             fill=(255, 255, 255, 120), 
-                                             outline=(220, 220, 220, 100), 
-                                             width=1)
-                                
-                                # Draw label text in subtle grey
-                                if font:
-                                    draw.text((label_x, label_y), overlay_label, fill=(120, 120, 120, 200), font=font)
-                                else:
-                                    draw.text((label_x, label_y), overlay_label, fill=(120, 120, 120, 200))
-                                    
-                        except (ValueError, TypeError):
-                            continue
-
                 # Third pass: draw boxes & labels on top
                 for item in positioned:
                     x0, y0, x1, y1 = item['box']
@@ -1269,6 +1197,79 @@ div.leaflet-container {background: #f2f2f3 !important;}
                         bot_text = "  |  ".join(bot_components)
                         _label_centered(top_text, sx, inbound_top - 6, above=True)
                         _label_centered(bot_text, sx, outbound_bottom + 6, above=False)
+                
+                # Final pass: draw large grey overlays for expanded processes ON TOP of everything
+                group_coords = st.session_state.get('proc_group_coordinates', {})
+                group_expanded = st.session_state.get('proc_group_expanded', [])
+                for group_idx, coords_data in group_coords.items():
+                    # Only draw overlay if process is expanded
+                    if (group_idx < len(group_expanded) and 
+                        group_expanded[group_idx] and 
+                        coords_data.get('lat') is not None and 
+                        coords_data.get('lon') is not None):
+                        
+                        try:
+                            lat_f = float(coords_data['lat'])
+                            lon_f = float(coords_data['lon'])
+                            
+                            # Center the overlay in the middle of the map, not on the process position
+                            center_px = w / 2  # Center of map width
+                            center_py = h / 2  # Center of map height
+                            
+                            # Create a larger overlay box (85% of map size, well centered)
+                            overlay_w = int(w * 0.85)  # Increased from 75% to 85%
+                            overlay_h = int(h * 0.85)  # Increased from 75% to 85%
+                            
+                            # Center the overlay in the middle of the map
+                            overlay_x0 = int(center_px - overlay_w / 2)
+                            overlay_y0 = int(center_py - overlay_h / 2)
+                            overlay_x1 = overlay_x0 + overlay_w
+                            overlay_y1 = overlay_y0 + overlay_h
+                            
+                            # Ensure overlay stays within map bounds with some padding
+                            margin = 20
+                            overlay_x0 = max(margin, overlay_x0)
+                            overlay_y0 = max(margin, overlay_y0)
+                            overlay_x1 = min(w - margin, overlay_x1)
+                            overlay_y1 = min(h - margin, overlay_y1)
+                            
+                            # Draw very light grey semi-transparent overlay
+                            draw.rectangle([overlay_x0, overlay_y0, overlay_x1, overlay_y1], 
+                                         fill=(250, 250, 250, 40),  # Almost white with very low opacity
+                                         outline=(245, 245, 245, 80), 
+                                         width=1)
+                                         
+                            # Optional: Add a subtle label in the corner
+                            if group_idx < len(st.session_state.get('proc_group_names', [])):
+                                group_name = st.session_state['proc_group_names'][group_idx]
+                                overlay_label = f"Process Area: {group_name}"
+                                if font:
+                                    label_bbox = draw.textbbox((0, 0), overlay_label, font=font)
+                                    label_w = label_bbox[2] - label_bbox[0]
+                                    label_h = label_bbox[3] - label_bbox[1]
+                                else:
+                                    label_w = len(overlay_label) * 6
+                                    label_h = 10
+                                
+                                # Place label in top-left corner of overlay with padding
+                                label_x = overlay_x0 + 15
+                                label_y = overlay_y0 + 15
+                                
+                                # Very subtle background for label
+                                draw.rectangle([label_x-5, label_y-3, label_x+label_w+5, label_y+label_h+3], 
+                                             fill=(255, 255, 255, 120), 
+                                             outline=(220, 220, 220, 100), 
+                                             width=1)
+                                
+                                # Draw label text in subtle grey
+                                if font:
+                                    draw.text((label_x, label_y), overlay_label, fill=(120, 120, 120, 200), font=font)
+                                else:
+                                    draw.text((label_x, label_y), overlay_label, fill=(120, 120, 120, 200))
+                                    
+                        except (ValueError, TypeError):
+                            continue
+                
                 # Present snapshot full width (base selector moved to top bar)
                 img = base_img  # for coordinate capture
                 coords = streamlit_image_coordinates(img, key="meas_img", width=w)
