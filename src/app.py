@@ -888,27 +888,89 @@ div.leaflet-container {background: #f2f2f3 !important;}
                 
                 group_expanded = st.session_state.get('proc_group_expanded', [])
                 
-                # First pass: draw large grey overlays for expanded processes BEHIND everything
+                # First pass: draw main process rectangles (when collapsed) BEHIND grey overlay
                 group_coords = st.session_state.get('proc_group_coordinates', {})
+                for group_idx, coords_data in group_coords.items():
+                    if group_idx < len(st.session_state.get('proc_group_names', [])):
+                        # Only show main process rectangle when group is collapsed
+                        if (group_idx < len(group_expanded) and group_expanded[group_idx]):
+                            continue  # Skip - group is expanded, grey overlay will be shown instead
+                            
+                        lat = coords_data.get('lat')
+                        lon = coords_data.get('lon')
+                        if lat is not None and lon is not None:
+                            try:
+                                lat_f = float(lat)
+                                lon_f = float(lon)
+                                group_px, group_py = snapshot_lonlat_to_pixel(
+                                    lon_f, lat_f,
+                                    (st.session_state['map_center'][1], st.session_state['map_center'][0]),
+                                    st.session_state['map_zoom'],
+                                    w, h
+                                )
+                                # Skip if far outside snapshot bounds
+                                if group_px < -50 or group_py < -20 or group_px > w + 50 or group_py > h + 20:
+                                    continue
+                                    
+                                group_label = st.session_state['proc_group_names'][group_idx]
+                                scale = 1.5  # Slightly larger for main processes
+                                base_padding = 8
+                                padding = int(base_padding * scale)
+                                text_bbox = draw.textbbox((0, 0), group_label, font=font) if font else (0, 0, len(group_label) * 6, 10)
+                                tw = (text_bbox[2] - text_bbox[0])
+                                th = (text_bbox[3] - text_bbox[1])
+                                box_w = int(tw * scale + padding * 2)
+                                box_h = int(th * scale + padding * 2)
+                                x0 = int(group_px - box_w / 2)
+                                y0 = int(group_py - box_h / 2)
+                                x1 = x0 + box_w
+                                y1 = y0 + box_h
+                                if x1 < 0 or y1 < 0 or x0 > w or y0 > h:
+                                    continue
+                                
+                                # Draw main process rectangle with green styling
+                                fill_color = (200, 255, 200, 245)  # Light green
+                                border_color = (34, 139, 34, 255)  # Forest green
+                                text_color = (0, 100, 0, 255)      # Dark green
+                                border_width = 3
+                                
+                                # Draw filled rectangle
+                                draw.rectangle([x0, y0, x1, y1], fill=fill_color, outline=border_color, width=border_width)
+                                # Center text inside box
+                                box_w = x1 - x0
+                                box_h = y1 - y0
+                                if font:
+                                    bbox_lbl = draw.textbbox((0,0), group_label, font=font)
+                                    t_w = bbox_lbl[2]-bbox_lbl[0]
+                                    t_h = bbox_lbl[3]-bbox_lbl[1]
+                                else:
+                                    t_w = len(group_label)*6
+                                    t_h = 10
+                                ct_x = int(x0 + (box_w - t_w)/2)
+                                ct_y = int(y0 + (box_h - t_h)/2)
+                                if font:
+                                    draw.text((ct_x, ct_y), group_label, fill=text_color, font=font)
+                                else:
+                                    draw.text((ct_x, ct_y), group_label, fill=text_color)
+                                    
+                            except (ValueError, TypeError):
+                                continue
+                
+                # Second pass: draw large grey overlays for expanded processes ABOVE main processes
                 for group_idx, coords_data in group_coords.items():
                     # Only draw overlay if process is expanded
                     if (group_idx < len(group_expanded) and 
                         group_expanded[group_idx]):
                         try:
-                            lat_f = float(coords_data.get('lat', 0))
-                            lon_f = float(coords_data.get('lon', 0))
-                            center_px, center_py = snapshot_lonlat_to_pixel(
-                                lon_f, lat_f,
-                                (st.session_state['map_center'][1], st.session_state['map_center'][0]),
-                                st.session_state['map_zoom'],
-                                w, h
-                            )
+                            # Always use fixed size overlay centered in screen
+                            # Fixed size: 90% width, 90% height
+                            overlay_w = int(w * 0.9)
+                            overlay_h = int(h * 0.9)
                             
-                            # Create a large semi-transparent overlay area
-                            overlay_w = int(w * 0.4)  # Increased from 30% to 40%
-                            overlay_h = int(h * 0.85)  # Increased from 75% to 85%
+                            # Always center in the middle of the screen
+                            center_px = w // 2
+                            center_py = h // 2
                             
-                            # Center the overlay in the middle of the map
                             overlay_x0 = int(center_px - overlay_w / 2)
                             overlay_y0 = int(center_py - overlay_h / 2)
                             overlay_x1 = overlay_x0 + overlay_w
@@ -958,6 +1020,7 @@ div.leaflet-container {background: #f2f2f3 !important;}
                         except (ValueError, TypeError):
                             continue
                 
+                # Third pass: draw subprocesses ABOVE grey overlay (only for expanded groups)
                 for i, p in enumerate(st.session_state['processes']):
                     lat = p.get('lat'); lon = p.get('lon')
                     if lat in (None, "", "None") or lon in (None, "", "None"):
@@ -1011,59 +1074,6 @@ div.leaflet-container {background: #f2f2f3 !important;}
                         name_index.setdefault(lname, []).append(len(positioned) - 1)
                     except (ValueError, TypeError):
                         continue
-
-                # Add group rectangles (only when collapsed)
-                group_coords = st.session_state.get('proc_group_coordinates', {})
-                for group_idx, coords_data in group_coords.items():
-                    if group_idx < len(st.session_state.get('proc_group_names', [])):
-                        # Only show main process rectangle when group is collapsed
-                        if (group_idx < len(group_expanded) and group_expanded[group_idx]):
-                            continue  # Skip - group is expanded, grey overlay will be shown instead
-                            
-                        lat = coords_data.get('lat')
-                        lon = coords_data.get('lon')
-                        if lat is not None and lon is not None:
-                            try:
-                                lat_f = float(lat)
-                                lon_f = float(lon)
-                                group_px, group_py = snapshot_lonlat_to_pixel(
-                                    lon_f, lat_f,
-                                    (st.session_state['map_center'][1], st.session_state['map_center'][0]),
-                                    st.session_state['map_zoom'],
-                                    w, h
-                                )
-                                # Skip if far outside snapshot bounds
-                                if group_px < -50 or group_py < -20 or group_px > w + 50 or group_py > h + 20:
-                                    continue
-                                    
-                                group_label = st.session_state['proc_group_names'][group_idx]
-                                scale = 1.5  # Slightly larger for main processes
-                                base_padding = 8
-                                padding = int(base_padding * scale)
-                                text_bbox = draw.textbbox((0, 0), group_label, font=font) if font else (0, 0, len(group_label) * 6, 10)
-                                tw = (text_bbox[2] - text_bbox[0])
-                                th = (text_bbox[3] - text_bbox[1])
-                                box_w = int(tw * scale + padding * 2)
-                                box_h = int(th * scale + padding * 2)
-                                x0 = int(group_px - box_w / 2)
-                                y0 = int(group_py - box_h / 2)
-                                x1 = x0 + box_w
-                                y1 = y0 + box_h
-                                if x1 < 0 or y1 < 0 or x0 > w or y0 > h:
-                                    continue
-                                    
-                                positioned.append({
-                                    'idx': f'group_{group_idx}',
-                                    'label': group_label,
-                                    'center': (group_px, group_py),
-                                    'box': (x0, y0, x1, y1),
-                                    'next_raw': '',
-                                    'type': 'process'
-                                })
-                                lname = group_label.strip().lower()
-                                name_index.setdefault(lname, []).append(len(positioned) - 1)
-                            except (ValueError, TypeError):
-                                continue
 
                 # Helper: draw arrow with head
                 def _draw_arrow(draw_ctx, x_start, y_start, x_end, y_end, color=(0, 0, 0, 255), width=3, head_len=18, head_angle_deg=30):
