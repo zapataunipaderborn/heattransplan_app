@@ -292,6 +292,9 @@ with left:
             if 'proc_group_expanded' not in st.session_state:
                 st.session_state['proc_group_expanded'] = []
             st.session_state['proc_group_expanded'].append(False)  # Start collapsed by default
+            if 'proc_group_info_expanded' not in st.session_state:
+                st.session_state['proc_group_info_expanded'] = []
+            st.session_state['proc_group_info_expanded'].append(False)  # Start collapsed by default
             st.session_state['ui_status_msg'] = "Added new empty process"
             st.rerun()
     mode = st.session_state['ui_mode_radio']
@@ -333,6 +336,11 @@ with left:
                 else:
                     current_names = current_names[:group_count]
                 st.session_state['proc_group_names'] = current_names
+            # Initialize information expanded state
+            if 'proc_group_info_expanded' not in st.session_state:
+                st.session_state['proc_group_info_expanded'] = [False]*group_count  # Start collapsed by default
+            elif len(st.session_state['proc_group_info_expanded']) != group_count:
+                st.session_state['proc_group_info_expanded'] = [st.session_state['proc_group_info_expanded'][g] if g < len(st.session_state['proc_group_info_expanded']) else False for g in range(group_count)]
             # Track group delete confirmation
             if 'group_delete_pending' not in st.session_state:
                 st.session_state['group_delete_pending'] = None
@@ -352,8 +360,8 @@ with left:
             for g, g_list in enumerate(st.session_state['proc_groups']):
                 # Top thick separator for group
                 st.markdown("<div style='height:3px; background:#888888; margin:12px 0 6px;'></div>", unsafe_allow_html=True)
-                # Arrow | Name | Add subprocess | Place | Count | Delete
-                gh_cols = st.columns([0.05, 0.32, 0.18, 0.12, 0.08, 0.10])
+                # Arrow | Name | Place | Count | Delete
+                gh_cols = st.columns([0.05, 0.50, 0.15, 0.12, 0.10])
                 g_toggle_label = "▾" if st.session_state['proc_group_expanded'][g] else "▸"
                 if gh_cols[0].button(g_toggle_label, key=f"group_toggle_{g}"):
                     st.session_state['proc_group_expanded'][g] = not st.session_state['proc_group_expanded'][g]
@@ -361,22 +369,11 @@ with left:
                 default_name = st.session_state['proc_group_names'][g]
                 new_name = gh_cols[1].text_input("Group name", value=default_name, key=f"group_name_{g}", label_visibility="collapsed", placeholder=f"Group {g+1}")
                 st.session_state['proc_group_names'][g] = new_name.strip() or default_name
-                if gh_cols[2].button("Add subprocess", key=f"add_proc_group_{g}"):
-                    add_process(st.session_state)
-                    new_idx = len(st.session_state['processes']) - 1
-                    g_list.append(new_idx)
-                    # Ensure proc_expanded has entry and keep it collapsed
-                    if len(st.session_state['proc_expanded']) <= new_idx:
-                        st.session_state['proc_expanded'].append(False)
-                    else:
-                        st.session_state['proc_expanded'][new_idx] = False
-                    st.session_state['ui_status_msg'] = f"Added subprocess to {st.session_state['proc_group_names'][g]}"
-                    st.rerun()
                 
                 # Place button for the group/process
                 group_place_active = (st.session_state['placement_mode'] and st.session_state.get('placing_process_idx') == f"group_{g}")
                 if not group_place_active:
-                    if gh_cols[3].button("Place", key=f"place_group_{g}"):
+                    if gh_cols[2].button("Place", key=f"place_group_{g}"):
                         st.session_state['placement_mode'] = True
                         st.session_state['measure_mode'] = False
                         st.session_state['placing_process_idx'] = f"group_{g}"
@@ -384,15 +381,15 @@ with left:
                         st.session_state['ui_status_msg'] = f"Click on map to place: {group_name}"
                         st.rerun()
                 else:
-                    if gh_cols[3].button("Done", key=f"done_place_group_{g}"):
+                    if gh_cols[2].button("Done", key=f"done_place_group_{g}"):
                         st.session_state['placement_mode'] = False
                         st.session_state['placing_process_idx'] = None
                         st.session_state['ui_status_msg'] = "Placement mode disabled"
                         st.rerun()
                 
-                gh_cols[4].markdown(f"**{len(g_list)}**")
+                gh_cols[3].markdown(f"**{len(g_list)}**")
                 pending_group = st.session_state.get('group_delete_pending')
-                with gh_cols[5]:
+                with gh_cols[4]:
                     if pending_group == g:
                         st.write("Sure?")
                         if st.button("✅", key=f"confirm_del_group_{g}"):
@@ -404,6 +401,7 @@ with left:
                             st.session_state['proc_groups'].pop(g)
                             st.session_state['proc_group_names'].pop(g)
                             st.session_state['proc_group_expanded'].pop(g)
+                            st.session_state['proc_group_info_expanded'].pop(g)
                             st.session_state['group_delete_pending'] = None
                             st.session_state['ui_status_msg'] = "Group deleted"
                             st.rerun()
@@ -422,50 +420,70 @@ with left:
                 if not g_list:
                     st.caption("(No processes in this group)")
                 
-                # Add information section for the main process (group level)
-                st.markdown("**Information:**")
-                info_row1_cols = st.columns([1, 1, 1])
+                # Add collapsible information section for the main process (group level)
+                info_header_cols = st.columns([0.05, 0.95])
+                info_toggle_label = "▾" if st.session_state['proc_group_info_expanded'][g] else "▸"
+                if info_header_cols[0].button(info_toggle_label, key=f"info_toggle_{g}"):
+                    st.session_state['proc_group_info_expanded'][g] = not st.session_state['proc_group_info_expanded'][g]
+                    st.rerun()
+                info_header_cols[1].markdown("**Information**")
                 
-                # Initialize process coordinates and data if not exists
-                if 'proc_group_coordinates' not in st.session_state:
-                    st.session_state['proc_group_coordinates'] = {}
-                if g not in st.session_state['proc_group_coordinates']:
-                    st.session_state['proc_group_coordinates'][g] = {'lat': '', 'lon': '', 'hours': ''}
-                
-                current_coords = st.session_state['proc_group_coordinates'][g]
-                new_lat = info_row1_cols[0].text_input("Latitude", value=str(current_coords.get('lat', '') or ''), key=f"group_lat_{g}")
-                new_lon = info_row1_cols[1].text_input("Longitude", value=str(current_coords.get('lon', '') or ''), key=f"group_lon_{g}")
-                new_hours = info_row1_cols[2].text_input("Hours", value=str(current_coords.get('hours', '') or ''), key=f"group_hours_{g}")
-                
-                # Update coordinates and hours in session state
-                st.session_state['proc_group_coordinates'][g]['lat'] = new_lat if new_lat.strip() else ''
-                st.session_state['proc_group_coordinates'][g]['lon'] = new_lon if new_lon.strip() else ''
-                st.session_state['proc_group_coordinates'][g]['hours'] = new_hours if new_hours.strip() else ''
-                
-                # Next Processes dropdown for the group
-                if 'proc_group_next' not in st.session_state:
-                    st.session_state['proc_group_next'] = {}
-                if g not in st.session_state['proc_group_next']:
-                    st.session_state['proc_group_next'][g] = ''
-                
-                # Build option list of other process group names
-                all_group_names = st.session_state.get('proc_group_names', [])
-                if len(all_group_names) <= 1:
-                    st.caption("To connect processes, add more than one process group")
-                    st.session_state['proc_group_next'][g] = ''
-                else:
-                    # Create options excluding current group
-                    options = [name for idx, name in enumerate(all_group_names) if idx != g]
+                if st.session_state['proc_group_info_expanded'][g]:
+                    info_row1_cols = st.columns([1, 1, 1])
                     
-                    # Current selection
-                    current_next = st.session_state['proc_group_next'][g]
-                    default_selection = [current_next] if current_next and current_next in options else []
+                    # Initialize process coordinates and data if not exists
+                    if 'proc_group_coordinates' not in st.session_state:
+                        st.session_state['proc_group_coordinates'] = {}
+                    if g not in st.session_state['proc_group_coordinates']:
+                        st.session_state['proc_group_coordinates'][g] = {'lat': '', 'lon': '', 'hours': ''}
                     
-                    selected = st.multiselect("Next Processes", options=options, default=default_selection, key=f"group_next_multi_{g}")
-                    # Store as comma-separated names  
-                    st.session_state['proc_group_next'][g] = ", ".join(selected) if selected else ''
+                    current_coords = st.session_state['proc_group_coordinates'][g]
+                    new_lat = info_row1_cols[0].text_input("Latitude", value=str(current_coords.get('lat', '') or ''), key=f"group_lat_{g}")
+                    new_lon = info_row1_cols[1].text_input("Longitude", value=str(current_coords.get('lon', '') or ''), key=f"group_lon_{g}")
+                    new_hours = info_row1_cols[2].text_input("Hours", value=str(current_coords.get('hours', '') or ''), key=f"group_hours_{g}")
+                    
+                    # Update coordinates and hours in session state
+                    st.session_state['proc_group_coordinates'][g]['lat'] = new_lat if new_lat.strip() else ''
+                    st.session_state['proc_group_coordinates'][g]['lon'] = new_lon if new_lon.strip() else ''
+                    st.session_state['proc_group_coordinates'][g]['hours'] = new_hours if new_hours.strip() else ''
+                    
+                    # Next Processes dropdown for the group
+                    if 'proc_group_next' not in st.session_state:
+                        st.session_state['proc_group_next'] = {}
+                    if g not in st.session_state['proc_group_next']:
+                        st.session_state['proc_group_next'][g] = ''
+                    
+                    # Build option list of other process group names
+                    all_group_names = st.session_state.get('proc_group_names', [])
+                    if len(all_group_names) <= 1:
+                        st.caption("To connect processes, add more than one process group")
+                        st.session_state['proc_group_next'][g] = ''
+                    else:
+                        # Create options excluding current group
+                        options = [name for idx, name in enumerate(all_group_names) if idx != g]
+                        
+                        # Current selection
+                        current_next = st.session_state['proc_group_next'][g]
+                        default_selection = [current_next] if current_next and current_next in options else []
+                        
+                        selected = st.multiselect("Next Processes", options=options, default=default_selection, key=f"group_next_multi_{g}")
+                        # Store as comma-separated names  
+                        st.session_state['proc_group_next'][g] = ", ".join(selected) if selected else ''
                 
-                st.markdown("**Subprocesses:**")
+                # Subprocesses section with Add subprocess button
+                sub_header_cols = st.columns([0.7, 0.3])
+                sub_header_cols[0].markdown("**Subprocesses:**")
+                if sub_header_cols[1].button("Add subprocess", key=f"add_proc_group_{g}"):
+                    add_process(st.session_state)
+                    new_idx = len(st.session_state['processes']) - 1
+                    g_list.append(new_idx)
+                    # Ensure proc_expanded has entry and keep it collapsed
+                    if len(st.session_state['proc_expanded']) <= new_idx:
+                        st.session_state['proc_expanded'].append(False)
+                    else:
+                        st.session_state['proc_expanded'][new_idx] = False
+                    st.session_state['ui_status_msg'] = f"Added subprocess to {st.session_state['proc_group_names'][g]}"
+                    st.rerun()
                 
                 for local_idx, i in enumerate(g_list):
                     p = st.session_state['processes'][i]
