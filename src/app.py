@@ -926,14 +926,20 @@ div.leaflet-container {background: #f2f2f3 !important;}
                 # --- Overlay subprocess boxes & connecting arrows on snapshot ---
                 draw = ImageDraw.Draw(base_img)
                 # Smaller font for more compact display
-                BOX_FONT_SIZE = 16  # Reduced from 20
+                BOX_FONT_SIZE = 20  # Smaller but still sharp text
                 try:
-                    font = ImageFont.truetype("DejaVuSans.ttf", BOX_FONT_SIZE)
+                    font = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", BOX_FONT_SIZE)
                 except (OSError, IOError):
                     try:
-                        font = ImageFont.load_default()
+                        font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", BOX_FONT_SIZE)
                     except (OSError, IOError):
-                        font = None
+                        try:
+                            font = ImageFont.truetype("DejaVuSans.ttf", BOX_FONT_SIZE)
+                        except (OSError, IOError):
+                            try:
+                                font = ImageFont.load_default()
+                            except (OSError, IOError):
+                                font = None
 
                 # First pass: compute positions & bounding boxes
                 positioned = []  # list of dicts with: idx,label,center,box,(next_raw)
