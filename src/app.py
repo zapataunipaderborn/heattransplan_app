@@ -1108,8 +1108,8 @@ div.leaflet-container {background: #f2f2f3 !important;}
                         if proc_px < -50 or proc_py < -20 or proc_px > w + 50 or proc_py > h + 20:
                             continue
                         label = p.get('name') or f"P{i+1}"
-                        scale = float(p.get('box_scale', 1.0) or 1.0)
-                        base_padding = 6
+                        scale = float(p.get('box_scale', 6.0) or 6.0)
+                        base_padding = 18
                         padding = int(base_padding * scale)
                         text_bbox = draw.textbbox((0, 0), label, font=font) if font else (0, 0, len(label) * 6, 10)
                         tw = (text_bbox[2] - text_bbox[0])
@@ -1233,7 +1233,7 @@ div.leaflet-container {background: #f2f2f3 !important;}
                     proc_scale = 1.0
                     if item_type == 'subprocess':
                         try:
-                            proc_scale = float(st.session_state['processes'][item['idx']].get('box_scale',1.0) or 1.0)
+                            proc_scale = float(st.session_state['processes'][item['idx']].get('box_scale',4.0) or 4.0)
                         except (ValueError, TypeError, KeyError):
                             proc_scale = 1.0
                     padding = int(6 * proc_scale)
