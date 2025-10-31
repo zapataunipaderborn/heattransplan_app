@@ -1207,15 +1207,16 @@ div.leaflet-container {background: #f2f2f3 !important;}
                     
                     if uploaded_file is not None:
                         try:
-                            state_json = uploaded_file.read().decode('utf-8')
-                            success, message = load_app_state(state_json)
+                            # Read the file immediately to avoid session state issues
+                            file_contents = uploaded_file.getvalue().decode('utf-8')
+                            success, message = load_app_state(file_contents)
                             if success:
                                 st.session_state['state_just_loaded'] = True
                                 st.rerun()
                             else:
                                 st.error(message)
                         except Exception as e:
-                            st.error(f"Error: {str(e)}")
+                            st.error(f"Error loading file: {str(e)}")
             with top_c6:
                 analyze_options = ["OpenStreetMap", "Positron", "Satellite", "Blank"]
                 if st.session_state['current_base'] not in analyze_options:
@@ -1473,7 +1474,11 @@ div.leaflet-container {background: #f2f2f3 !important;}
                 # Helper: draw arrow with head
                 def _draw_arrow(draw_ctx, x_start, y_start, x_end, y_end, color=(0, 0, 0, 255), width=3, head_len=18, head_angle_deg=30):
                     import math
-                    draw_ctx.line([(x_start, y_start), (x_end, y_end)], fill=color, width=width)
+                    from PIL import ImageDraw
+                    
+                    # Use PIL's line drawing with proper width for smooth diagonal lines
+                    draw_ctx.line([(x_start, y_start), (x_end, y_end)], fill=color, width=width, joint='curve')
+                    
                     ang = math.atan2(y_end - y_start, x_end - x_start)
                     ang_left = ang - math.radians(head_angle_deg)
                     ang_right = ang + math.radians(head_angle_deg)
@@ -1555,7 +1560,7 @@ div.leaflet-container {background: #f2f2f3 !important;}
                             start_y = sy + vec_dy * t_s * 1.02
                             end_x = tx - vec_dx * t_t * 1.02
                             end_y = ty - vec_dy * t_t * 1.02
-                            _draw_arrow(draw, start_x, start_y, end_x, end_y, color=(0, 0, 0, 245), width=3)
+                            _draw_arrow(draw, start_x, start_y, end_x, end_y, color=(0, 0, 0, 245), width=5)
 
                 # Third pass: draw boxes & labels on top
                 for item in positioned:
