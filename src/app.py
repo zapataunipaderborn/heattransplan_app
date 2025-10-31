@@ -301,11 +301,31 @@ div.streamlit-expanderHeader {padding:0.3rem 0.5rem !important;}
 .group-box {border:2px solid #ffffff; padding:6px 8px 8px 8px; margin:10px 0 16px 0; border-radius:6px; background:rgba(255,255,255,0.04);} 
 .group-box.collapsed {padding-bottom:4px;}
 
+/* Title with icon */
+.title-container {display: flex; align-items: center; gap: 20px; margin-bottom: 10px; margin-top: 15px;}
+.title-icon {width: 120px; height: auto;}
+
 </style>
 """, unsafe_allow_html=True)
 
 st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
-st.title("Energy Data Collection")
+
+# Read and encode the SVG
+import base64
+try:
+    with open('../data/symbol.svg', 'rb') as f:
+        svg_data = f.read()
+    svg_b64 = base64.b64encode(svg_data).decode()
+    svg_html = f'<img src="data:image/svg+xml;base64,{svg_b64}" class="title-icon" alt="Symbol">'
+except:
+    svg_html = ''  # Fallback if file not found
+
+st.markdown(f"""
+<div class="title-container">
+    {svg_html}
+    <h1 style="margin:0;">Energy Data Collection</h1>
+</div>
+""", unsafe_allow_html=True)
 
 MAP_WIDTH = 1300  # Increased width to use more space (was 1200)
 MAP_HEIGHT = 700   # Keep same height
