@@ -327,8 +327,8 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-MAP_WIDTH = 1300  # Increased width to use more space (was 1200)
-MAP_HEIGHT = 700   # Keep same height
+MAP_WIDTH = 1200  # Reduced width for better responsiveness (was 1300)
+MAP_HEIGHT = 650  # Slightly reduced height too
 
 # Tile templates for snapshot capture (static)
 TILE_TEMPLATES = {
