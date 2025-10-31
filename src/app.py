@@ -238,7 +238,7 @@ def export_to_csv():
     return output.getvalue()
 
 
-st.set_page_config(page_title="Heat Integration analysis", layout="wide")
+st.set_page_config(page_title="Energy Data Collection", layout="wide")
 
 # Compact top padding & utility CSS to keep map tight to top-right
 st.markdown("""
@@ -253,7 +253,7 @@ html, body, .stApp {font-size:13px !important;}
 .stMarkdown p, .stMarkdown span, .stMarkdown li {font-size:13px !important;}
 .stButton button {font-size:12px !important; padding:0.2rem 0.4rem !important;}
 .stTextInput input, .stNumberInput input {font-size:12px !important; padding:0.2rem 0.3rem !important;}
-.stRadio > div[role=radio] label {font-size:12px !important;}
+.stRadio > div[role=radio] label {font-size:12px !impohrtant;}
 .stDataFrame, .stDataFrame table {font-size:11px !important;}
 .stSlider {font-size:11px !important;}
 
@@ -305,7 +305,7 @@ div.streamlit-expanderHeader {padding:0.3rem 0.5rem !important;}
 """, unsafe_allow_html=True)
 
 st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
-st.title("Heat Integration analysis")
+st.title("Energy Data Collection")
 
 MAP_WIDTH = 1300  # Increased width to use more space (was 1200)
 MAP_HEIGHT = 700   # Keep same height
