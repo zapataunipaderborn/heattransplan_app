@@ -396,46 +396,6 @@ with left:
             st.session_state['ui_status_msg'] = "Added new empty process"
             st.rerun()
     
-    # Save/Load State Section
-    st.markdown("---")
-    st.markdown("**💾 Save/Load State**")
-    
-    # Check if we just loaded a file - if so, show a success message and skip the uploader
-    if 'state_just_loaded' in st.session_state and st.session_state['state_just_loaded']:
-        st.success("✅ State loaded successfully! You can now edit your processes.")
-        if st.button("Load Another File", key="btn_load_another"):
-            st.session_state['state_just_loaded'] = False
-            st.rerun()
-    else:
-        col_save, col_load = st.columns(2)
-        
-        with col_save:
-            if st.button("Save State", key="btn_save_state", help="Save current work to file"):
-                state_json = save_app_state()
-                st.download_button(
-                    label="Download State",
-                    data=state_json,
-                    file_name=f"heat_integration_state_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                    mime="application/json",
-                    key="download_state"
-                )
-        
-        with col_load:
-            uploaded_file = st.file_uploader("Load State", type=['json'], key="upload_state", help="Load previously saved work")
-            
-            if uploaded_file is not None:
-                try:
-                    state_json = uploaded_file.read().decode('utf-8')
-                    success, message = load_app_state(state_json)
-                    if success:
-                        # Mark that we just loaded a file
-                        st.session_state['state_just_loaded'] = True
-                        st.rerun()
-                    else:
-                        st.error(message)
-                except Exception as e:
-                    st.error(f"Error loading state: {str(e)}")
-    
     st.markdown("---")
     
     mode = st.session_state['ui_mode_radio']
@@ -991,7 +951,7 @@ div.leaflet-container {background: #f2f2f3 !important;}
         else:
             # In Analyze mode on right column proceed with snapshot tools below
             # --- Top action/status bar ---
-            top_c1, top_c2, top_c3, top_c4 = st.columns([3,2,2,2])
+            top_c1, top_c2, top_c3, top_c4 = st.columns([3,1.5,1.5,2])
             with top_c1:
                 # Decide dynamic status message (priority: placing > measuring > last action > default)
                 placing_idx = st.session_state.get('placing_process_idx')
@@ -1032,9 +992,74 @@ div.leaflet-container {background: #f2f2f3 !important;}
                         st.session_state['measure_points'] = []
                         st.session_state['measure_distance_m'] = None
             with top_c3:
-                st.empty()  # spacer
+                # Save and Load buttons together
+                col_save, col_load = st.columns(2)
+                
+                with col_save:
+                    # Save button - downloads directly
+                    state_json = save_app_state()
+                    st.download_button(
+                        label="Save",
+                        data=state_json,
+                        file_name=f"heat_integration_state_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                        mime="application/json",
+                        key="download_state",
+                        help="Download current state"
+                    )
+                
+                with col_load:
+                    # Check if we just loaded a file - show success message or buttons
+                    if 'state_just_loaded' in st.session_state and st.session_state['state_just_loaded']:
+                        if st.button("Load Another", key="btn_load_another", help="Load another file"):
+                            st.session_state['state_just_loaded'] = False
+                            st.rerun()
+                    else:
+                        # Load button - compact file uploader
+                        st.markdown("""
+                            <style>
+                            [data-testid="stFileUploader"] {
+                                width: max-content;
+                                margin-top: -1px;
+                            }
+                            [data-testid="stFileUploader"] section {
+                                padding: 0;
+                            }
+                            [data-testid="stFileUploader"] section > input + div {
+                                display: none;
+                            }
+                            [data-testid="stFileUploader"] section + div {
+                                display: none;
+                            }
+                            [data-testid="stFileUploader"] label {
+                                display: none !important;
+                            }
+                            [data-testid="stFileUploader"] button {
+                                width: 100%;
+                            }
+                            [data-testid="stFileUploader"] button span {
+                                font-size: 0;
+                            }
+                            [data-testid="stFileUploader"] button span::before {
+                                content: "Load saved file";
+                                font-size: 14px;
+                            }
+                            </style>
+                        """, unsafe_allow_html=True)
+                        
+                        uploaded_file = st.file_uploader("Load file", type=['json'], key="upload_state", label_visibility="collapsed")
+                        
+                        if uploaded_file is not None:
+                            try:
+                                state_json = uploaded_file.read().decode('utf-8')
+                                success, message = load_app_state(state_json)
+                                if success:
+                                    st.session_state['state_just_loaded'] = True
+                                    st.rerun()
+                                else:
+                                    st.error(message)
+                            except Exception as e:
+                                st.error(f"Error: {str(e)}")
             with top_c4:
-                st.markdown("<div style='font-size:12px; font-weight:600; margin-bottom:0px;'>Base</div>", unsafe_allow_html=True)
                 analyze_options = ["OpenStreetMap", "Positron", "Satellite", "Blank"]
                 if st.session_state['current_base'] not in analyze_options:
                     st.session_state['current_base'] = 'OpenStreetMap'
