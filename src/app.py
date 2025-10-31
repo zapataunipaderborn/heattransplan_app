@@ -7,6 +7,9 @@ from PIL import Image, ImageDraw, ImageFont
 from staticmap import StaticMap, CircleMarker
 from streamlit_image_coordinates import streamlit_image_coordinates
 from math import radians, cos, sin, sqrt, atan2
+import json
+import base64
+from datetime import datetime
 from process_utils import (
     init_process_state,
     add_process,
@@ -60,6 +63,98 @@ def snapshot_lonlat_to_pixel(lon_val_in, lat_val_in, center_ll, z_level, img_w, 
     snapshot_px = img_w / 2 + dxtile * px_per_tile
     snapshot_py = img_h / 2 + dytile * px_per_tile
     return snapshot_px, snapshot_py
+
+# Helper functions for saving and loading app state
+def save_app_state():
+    """Save the current app state to a JSON file"""
+    state_to_save = {
+        'timestamp': datetime.now().isoformat(),
+        'map_locked': st.session_state.get('map_locked', False),
+        'map_center': st.session_state.get('map_center', []),
+        'map_zoom': st.session_state.get('map_zoom', 17.5),
+        'current_base': st.session_state.get('current_base', 'OpenStreetMap'),
+        'processes': st.session_state.get('processes', []),
+        'proc_groups': st.session_state.get('proc_groups', []),
+        'proc_group_names': st.session_state.get('proc_group_names', []),
+        'proc_group_expanded': st.session_state.get('proc_group_expanded', []),
+        'proc_group_coordinates': st.session_state.get('proc_group_coordinates', {}),
+        'proc_group_info_expanded': st.session_state.get('proc_group_info_expanded', []),
+    }
+    
+    # Convert snapshots to base64 for JSON serialization
+    snapshots = st.session_state.get('map_snapshots', {})
+    encoded_snapshots = {}
+    for key, img_bytes in snapshots.items():
+        if img_bytes:
+            encoded_snapshots[key] = base64.b64encode(img_bytes).decode('utf-8')
+    state_to_save['map_snapshots_encoded'] = encoded_snapshots
+    
+    return json.dumps(state_to_save, indent=2)
+
+def load_app_state(state_json):
+    """Load app state from JSON data"""
+    try:
+        state = json.loads(state_json)
+        
+        # Restore session state
+        st.session_state['map_locked'] = state.get('map_locked', False)
+        st.session_state['map_center'] = state.get('map_center', [])
+        st.session_state['map_zoom'] = state.get('map_zoom', 17.5)
+        st.session_state['current_base'] = state.get('current_base', 'OpenStreetMap')
+        st.session_state['processes'] = state.get('processes', [])
+        st.session_state['proc_groups'] = state.get('proc_groups', [])
+        st.session_state['proc_group_names'] = state.get('proc_group_names', [])
+        st.session_state['proc_group_expanded'] = state.get('proc_group_expanded', [])
+        
+        # Convert proc_group_coordinates keys to integers (JSON converts them to strings)
+        raw_coords = state.get('proc_group_coordinates', {})
+        converted_coords = {}
+        for key, value in raw_coords.items():
+            converted_coords[int(key) if isinstance(key, str) else key] = value
+        st.session_state['proc_group_coordinates'] = converted_coords
+        
+        st.session_state['proc_group_info_expanded'] = state.get('proc_group_info_expanded', [])
+        
+        # Restore snapshots from base64
+        encoded_snapshots = state.get('map_snapshots_encoded', {})
+        decoded_snapshots = {}
+        for key, encoded_data in encoded_snapshots.items():
+            decoded_snapshots[key] = base64.b64decode(encoded_data)
+        st.session_state['map_snapshots'] = decoded_snapshots
+        
+        # Set the main snapshot - use current_base to get the right one
+        current_base = state.get('current_base', 'OpenStreetMap')
+        if decoded_snapshots:
+            st.session_state['map_snapshot'] = decoded_snapshots.get(current_base) or decoded_snapshots.get('OpenStreetMap')
+        
+        # Also set analyze_base_layer to match
+        st.session_state['analyze_base_layer'] = current_base
+        
+        # Update selector state to match loaded map
+        st.session_state['selector_center'] = state.get('map_center', [])[:]
+        st.session_state['selector_zoom'] = state.get('map_zoom', 17.5)
+        
+        # Reset UI interaction states to prevent freeze
+        st.session_state['placement_mode'] = False
+        st.session_state['placing_process_idx'] = None
+        st.session_state['measure_mode'] = False
+        st.session_state['measure_points'] = []
+        st.session_state['measure_distance_m'] = None
+        st.session_state['ui_status_msg'] = "State loaded successfully"
+        
+        # Initialize proc_expanded if processes exist
+        if 'proc_expanded' not in st.session_state or len(st.session_state['proc_expanded']) != len(state.get('processes', [])):
+            st.session_state['proc_expanded'] = [False] * len(state.get('processes', []))
+        
+        # Switch to Analyze mode if map was locked
+        if state.get('map_locked', False):
+            st.session_state['ui_mode_radio'] = 'Analyze'
+        else:
+            st.session_state['ui_mode_radio'] = 'Select Map'
+        
+        return True, f"State loaded successfully from {state.get('timestamp', 'unknown time')}"
+    except Exception as e:
+        return False, f"Error loading state: {str(e)}"
 
 st.set_page_config(page_title="Heat Integration analysis", layout="wide")
 
@@ -161,6 +256,9 @@ if 'analyze_base_choice' not in st.session_state:
 # Initialize address input explicitly (prevents KeyError after widget key changes)
 if 'address_input' not in st.session_state:
     st.session_state['address_input'] = ''
+# State load tracking
+if 'state_just_loaded' not in st.session_state:
+    st.session_state['state_just_loaded'] = False
 # Clean orphaned internal widget state keys left from layout changes (optional safeguard)
 for _k in list(st.session_state.keys()):
     if isinstance(_k, str) and _k.startswith('$$WIDGET_ID-'):
@@ -297,6 +395,49 @@ with left:
             st.session_state['proc_group_info_expanded'].append(False)  # Start collapsed by default
             st.session_state['ui_status_msg'] = "Added new empty process"
             st.rerun()
+    
+    # Save/Load State Section
+    st.markdown("---")
+    st.markdown("**💾 Save/Load State**")
+    
+    # Check if we just loaded a file - if so, show a success message and skip the uploader
+    if 'state_just_loaded' in st.session_state and st.session_state['state_just_loaded']:
+        st.success("✅ State loaded successfully! You can now edit your processes.")
+        if st.button("Load Another File", key="btn_load_another"):
+            st.session_state['state_just_loaded'] = False
+            st.rerun()
+    else:
+        col_save, col_load = st.columns(2)
+        
+        with col_save:
+            if st.button("Save State", key="btn_save_state", help="Save current work to file"):
+                state_json = save_app_state()
+                st.download_button(
+                    label="Download State",
+                    data=state_json,
+                    file_name=f"heat_integration_state_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                    mime="application/json",
+                    key="download_state"
+                )
+        
+        with col_load:
+            uploaded_file = st.file_uploader("Load State", type=['json'], key="upload_state", help="Load previously saved work")
+            
+            if uploaded_file is not None:
+                try:
+                    state_json = uploaded_file.read().decode('utf-8')
+                    success, message = load_app_state(state_json)
+                    if success:
+                        # Mark that we just loaded a file
+                        st.session_state['state_just_loaded'] = True
+                        st.rerun()
+                    else:
+                        st.error(message)
+                except Exception as e:
+                    st.error(f"Error loading state: {str(e)}")
+    
+    st.markdown("---")
+    
     mode = st.session_state['ui_mode_radio']
     # Subprocess & Stream UI (only show in Analyze mode to mimic original workflow)
     if mode == "Analyze":
@@ -737,6 +878,8 @@ div.leaflet-container {background: #f2f2f3 !important;}
             group_coords = st.session_state.get('proc_group_coordinates', {})
             group_names = st.session_state.get('proc_group_names', [])
             for group_idx, coords_data in group_coords.items():
+                # Convert group_idx to int if it's a string (happens after JSON load)
+                group_idx = int(group_idx) if isinstance(group_idx, str) else group_idx
                 if group_idx < len(group_names):
                     # Only show main process marker when group is collapsed
                     if (group_idx < len(group_expanded) and group_expanded[group_idx]):
@@ -957,6 +1100,8 @@ div.leaflet-container {background: #f2f2f3 !important;}
                 # First pass: draw main process rectangles (when collapsed) BEHIND grey overlay
                 group_coords = st.session_state.get('proc_group_coordinates', {})
                 for group_idx, coords_data in group_coords.items():
+                    # Convert group_idx to int if it's a string (happens after JSON load)
+                    group_idx = int(group_idx) if isinstance(group_idx, str) else group_idx
                     if group_idx < len(st.session_state.get('proc_group_names', [])):
                         # Only show main process rectangle when group is collapsed
                         if (group_idx < len(group_expanded) and group_expanded[group_idx]):
@@ -1024,6 +1169,8 @@ div.leaflet-container {background: #f2f2f3 !important;}
                 
                 # Second pass: draw large grey overlays for expanded processes ABOVE main processes
                 for group_idx, coords_data in group_coords.items():
+                    # Convert group_idx to int if it's a string (happens after JSON load)
+                    group_idx = int(group_idx) if isinstance(group_idx, str) else group_idx
                     # Only draw overlay if process is expanded
                     if (group_idx < len(group_expanded) and 
                         group_expanded[group_idx]):
