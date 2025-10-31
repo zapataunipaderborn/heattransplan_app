@@ -850,11 +850,60 @@ div.leaflet-container {background: #f2f2f3 !important;}
                     if lat is not None and lon is not None:
                         try:
                             group_name = group_names[group_idx]
+                            
+                            # Build detailed popup with subprocess information
+                            popup_html = f"<div style='min-width:250px;'><b style='font-size:16px;'>🏭 Process: {group_name}</b><br><br>"
+                            
+                            # Get all subprocesses in this group
+                            group_subprocess_list = proc_groups[group_idx] if group_idx < len(proc_groups) else []
+                            
+                            if group_subprocess_list:
+                                popup_html += f"<b>Subprocesses ({len(group_subprocess_list)}):</b><br>"
+                                popup_html += "<div style='max-height:300px;overflow-y:auto;'>"
+                                
+                                for subprocess_idx in group_subprocess_list:
+                                    if subprocess_idx < len(st.session_state['processes']):
+                                        subprocess = st.session_state['processes'][subprocess_idx]
+                                        subprocess_name = subprocess.get('name') or f"Subprocess {subprocess_idx+1}"
+                                        
+                                        popup_html += f"<div style='margin:8px 0;padding:6px;background:#f0f0f0;border-radius:4px;'>"
+                                        popup_html += f"<b>📦 {subprocess_name}</b><br>"
+                                        
+                                        # Add location if available
+                                        sub_lat = subprocess.get('lat')
+                                        sub_lon = subprocess.get('lon')
+                                        if sub_lat and sub_lon:
+                                            popup_html += f"<small>Location: ({sub_lat}, {sub_lon})</small><br>"
+                                        
+                                        # Add next connection if available
+                                        next_val = subprocess.get('next', '')
+                                        if next_val:
+                                            popup_html += f"<small>Next: {next_val}</small><br>"
+                                        
+                                        # Add streams information
+                                        streams = subprocess.get('streams', [])
+                                        if streams:
+                                            popup_html += f"<small><b>Streams ({len(streams)}):</b></small><br>"
+                                            for s_idx, stream in enumerate(streams):
+                                                tin = stream.get('temp_in', '?')
+                                                tout = stream.get('temp_out', '?')
+                                                mdot = stream.get('mdot', '?')
+                                                cp = stream.get('cp', '?')
+                                                popup_html += f"<small>&nbsp;&nbsp;• Stream {s_idx+1}: Tin={tin}°C, Tout={tout}°C, ṁ={mdot}, cp={cp}</small><br>"
+                                        
+                                        popup_html += "</div>"
+                                
+                                popup_html += "</div>"
+                            else:
+                                popup_html += "<i>No subprocesses yet</i><br>"
+                            
+                            popup_html += "</div>"
+                            
                             html = f"""<div style='background:#c8f7c5;border:2px solid #228b22;padding:6px 12px;font-size:16px;font-weight:700;color:#006400;border-radius:6px;white-space:nowrap;box-shadow:0 2px 4px rgba(0,0,0,0.4);'>🏭 {group_name}</div>"""
                             folium.Marker(
                                 [float(lat), float(lon)],
                                 tooltip=group_name,
-                                popup=f"<b>Process: {group_name}</b><br>Main process unit",
+                                popup=folium.Popup(popup_html, max_width=400),
                                 icon=folium.DivIcon(html=html)
                             ).add_to(process_fg)
                         except (ValueError, TypeError):
@@ -1618,5 +1667,73 @@ div.leaflet-container {background: #f2f2f3 !important;}
                 else:
                     # clear stored distance if points < 2
                     st.session_state['measure_distance_m'] = None
+                
+                # Add Process Info Panel below the map (collapsed processes)
+                st.markdown("---")
+                st.markdown("**📋 Process Information**")
+                
+                # Show info for collapsed processes
+                group_coords = st.session_state.get('proc_group_coordinates', {})
+                group_names = st.session_state.get('proc_group_names', [])
+                proc_groups = st.session_state.get('proc_groups', [])
+                group_expanded = st.session_state.get('proc_group_expanded', [])
+                
+                collapsed_processes = []
+                for group_idx, coords_data in group_coords.items():
+                    group_idx = int(group_idx) if isinstance(group_idx, str) else group_idx
+                    # Only show info for collapsed processes
+                    if group_idx < len(group_expanded) and not group_expanded[group_idx]:
+                        if group_idx < len(group_names):
+                            collapsed_processes.append(group_idx)
+                
+                if collapsed_processes:
+                    for group_idx in collapsed_processes:
+                        with st.expander(f"🏭 {group_names[group_idx]}", expanded=False):
+                            coords_data = group_coords.get(group_idx, {})
+                            lat = coords_data.get('lat')
+                            lon = coords_data.get('lon')
+                            
+                            if lat and lon:
+                                st.markdown(f"**📍 Location:** ({lat}, {lon})")
+                            
+                            group_subprocess_list = proc_groups[group_idx] if group_idx < len(proc_groups) else []
+                            
+                            if group_subprocess_list:
+                                st.markdown(f"**Subprocesses:** {len(group_subprocess_list)}")
+                                
+                                for subprocess_idx in group_subprocess_list:
+                                    if subprocess_idx < len(st.session_state['processes']):
+                                        subprocess = st.session_state['processes'][subprocess_idx]
+                                        subprocess_name = subprocess.get('name') or f"Subprocess {subprocess_idx+1}"
+                                        
+                                        st.markdown(f"**📦 {subprocess_name}**")
+                                        
+                                        # Location
+                                        sub_lat = subprocess.get('lat')
+                                        sub_lon = subprocess.get('lon')
+                                        if sub_lat and sub_lon:
+                                            st.caption(f"Location: ({sub_lat}, {sub_lon})")
+                                        
+                                        # Next connection
+                                        next_val = subprocess.get('next', '')
+                                        if next_val:
+                                            st.caption(f"Next: {next_val}")
+                                        
+                                        # Streams
+                                        streams = subprocess.get('streams', [])
+                                        if streams:
+                                            st.caption(f"**Streams ({len(streams)}):**")
+                                            for s_idx, stream in enumerate(streams):
+                                                tin = stream.get('temp_in', '?')
+                                                tout = stream.get('temp_out', '?')
+                                                mdot = stream.get('mdot', '?')
+                                                cp = stream.get('cp', '?')
+                                                st.caption(f"  • Stream {s_idx+1}: Tin={tin}°C, Tout={tout}°C, ṁ={mdot}, cp={cp}")
+                                        
+                                        st.markdown("---")
+                            else:
+                                st.info("No subprocesses in this process yet")
+                else:
+                    st.info("No collapsed processes to show. Expand a process to see its details in the editor panel.")
             else:
                 st.warning("Snapshot missing. Unlock and re-capture if needed.")
