@@ -1408,9 +1408,9 @@ div.leaflet-container {background: #f2f2f3 !important;}
                                 
                                 # Draw label text in subtle grey
                                 if font:
-                                    draw.text((label_x, label_y), overlay_label, fill=(120, 120, 120, 200), font=font)
+                                    draw.text((label_x, label_y), overlay_label, fill=(40, 40, 40, 255), font=font)
                                 else:
-                                    draw.text((label_x, label_y), overlay_label, fill=(120, 120, 120, 200))
+                                    draw.text((label_x, label_y), overlay_label, fill=(40, 40, 40, 255))
                                     
                         except (ValueError, TypeError):
                             continue
