@@ -17,6 +17,7 @@ from process_utils import (
     add_stream_to_process,
     delete_stream_from_process,
 )
+import csv
 
 # Helper: convert pixel (relative to center) in snapshot to lon/lat using Web Mercator math
 def snapshot_pixel_to_lonlat(px, py, center_ll, z_level, img_w, img_h):
@@ -155,6 +156,87 @@ def load_app_state(state_json):
         return True, f"State loaded successfully from {state.get('timestamp', 'unknown time')}"
     except Exception as e:
         return False, f"Error loading state: {str(e)}"
+
+def export_to_csv():
+    """Export all process data to CSV format with one row per stream"""
+    from io import StringIO
+    
+    output = StringIO()
+    writer = csv.writer(output)
+    
+    # Write header
+    writer.writerow([
+        'Process', 'Subprocess', 'Latitude', 'Longitude', 
+        'Next Connection', 'Stream', 'Tin (°C)', 'Tout (°C)', 
+        'mdot', 'cp'
+    ])
+    
+    # Get process group information
+    proc_groups = st.session_state.get('proc_groups', [])
+    proc_group_names = st.session_state.get('proc_group_names', [])
+    proc_group_coordinates = st.session_state.get('proc_group_coordinates', {})
+    
+    # Create mapping of subprocess index to group
+    subprocess_to_group = {}
+    for group_idx, group_subprocess_list in enumerate(proc_groups):
+        for subprocess_idx in group_subprocess_list:
+            subprocess_to_group[subprocess_idx] = group_idx
+    
+    # Iterate through all subprocesses
+    for subprocess_idx, subprocess in enumerate(st.session_state.get('processes', [])):
+        subprocess_name = subprocess.get('name') or f"Subprocess {subprocess_idx+1}"
+        lat = subprocess.get('lat', '')
+        lon = subprocess.get('lon', '')
+        next_connection = subprocess.get('next', '')
+        
+        # Get process (group) name
+        parent_group_idx = subprocess_to_group.get(subprocess_idx)
+        if parent_group_idx is not None and parent_group_idx < len(proc_group_names):
+            process_name = proc_group_names[parent_group_idx]
+        else:
+            process_name = ''
+        
+        # Get streams
+        streams = subprocess.get('streams', [])
+        
+        if streams:
+            # One row per stream
+            for stream_idx, stream in enumerate(streams):
+                stream_name = f"Stream {stream_idx + 1}"
+                tin = stream.get('temp_in', '')
+                tout = stream.get('temp_out', '')
+                mdot = stream.get('mdot', '')
+                cp = stream.get('cp', '')
+                
+                writer.writerow([
+                    process_name,
+                    subprocess_name,
+                    lat,
+                    lon,
+                    next_connection,
+                    stream_name,
+                    tin,
+                    tout,
+                    mdot,
+                    cp
+                ])
+        else:
+            # If no streams, still write subprocess info
+            writer.writerow([
+                process_name,
+                subprocess_name,
+                lat,
+                lon,
+                next_connection,
+                '',  # No stream
+                '',  # No Tin
+                '',  # No Tout
+                '',  # No mdot
+                ''   # No cp
+            ])
+    
+    return output.getvalue()
+
 
 st.set_page_config(page_title="Heat Integration analysis", layout="wide")
 
@@ -1000,7 +1082,7 @@ div.leaflet-container {background: #f2f2f3 !important;}
         else:
             # In Analyze mode on right column proceed with snapshot tools below
             # --- Top action/status bar ---
-            top_c1, top_c2, top_c3, top_c4 = st.columns([3,1.5,1.5,2])
+            top_c1, top_c2, top_c3, top_c4, top_c5, top_c6 = st.columns([3,1.5,1,1,1,2])
             with top_c1:
                 # Decide dynamic status message (priority: placing > measuring > last action > default)
                 placing_idx = st.session_state.get('placing_process_idx')
@@ -1041,74 +1123,80 @@ div.leaflet-container {background: #f2f2f3 !important;}
                         st.session_state['measure_points'] = []
                         st.session_state['measure_distance_m'] = None
             with top_c3:
-                # Save and Load buttons together
-                col_save, col_load = st.columns(2)
-                
-                with col_save:
-                    # Save button - downloads directly
-                    state_json = save_app_state()
-                    st.download_button(
-                        label="Save",
-                        data=state_json,
-                        file_name=f"heat_integration_state_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                        mime="application/json",
-                        key="download_state",
-                        help="Download current state"
-                    )
-                
-                with col_load:
-                    # Check if we just loaded a file - show success message or buttons
-                    if 'state_just_loaded' in st.session_state and st.session_state['state_just_loaded']:
-                        if st.button("Load Another", key="btn_load_another", help="Load another file"):
-                            st.session_state['state_just_loaded'] = False
-                            st.rerun()
-                    else:
-                        # Load button - compact file uploader
-                        st.markdown("""
-                            <style>
-                            [data-testid="stFileUploader"] {
-                                width: max-content;
-                                margin-top: -1px;
-                            }
-                            [data-testid="stFileUploader"] section {
-                                padding: 0;
-                            }
-                            [data-testid="stFileUploader"] section > input + div {
-                                display: none;
-                            }
-                            [data-testid="stFileUploader"] section + div {
-                                display: none;
-                            }
-                            [data-testid="stFileUploader"] label {
-                                display: none !important;
-                            }
-                            [data-testid="stFileUploader"] button {
-                                width: 100%;
-                            }
-                            [data-testid="stFileUploader"] button span {
-                                font-size: 0;
-                            }
-                            [data-testid="stFileUploader"] button span::before {
-                                content: "Load saved file";
-                                font-size: 14px;
-                            }
-                            </style>
-                        """, unsafe_allow_html=True)
-                        
-                        uploaded_file = st.file_uploader("Load file", type=['json'], key="upload_state", label_visibility="collapsed")
-                        
-                        if uploaded_file is not None:
-                            try:
-                                state_json = uploaded_file.read().decode('utf-8')
-                                success, message = load_app_state(state_json)
-                                if success:
-                                    st.session_state['state_just_loaded'] = True
-                                    st.rerun()
-                                else:
-                                    st.error(message)
-                            except Exception as e:
-                                st.error(f"Error: {str(e)}")
+                # Export button
+                csv_data = export_to_csv()
+                st.download_button(
+                    label="Export",
+                    data=csv_data,
+                    file_name=f"heat_integration_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    mime="text/csv",
+                    key="export_csv",
+                    help="Export process data to CSV"
+                )
             with top_c4:
+                # Save button - downloads directly
+                state_json = save_app_state()
+                st.download_button(
+                    label="Save",
+                    data=state_json,
+                    file_name=f"heat_integration_state_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                    mime="application/json",
+                    key="download_state",
+                    help="Download current state"
+                )
+            with top_c5:
+                # Check if we just loaded a file - show success message or buttons
+                if 'state_just_loaded' in st.session_state and st.session_state['state_just_loaded']:
+                    if st.button("Load Another", key="btn_load_another", help="Load another file"):
+                        st.session_state['state_just_loaded'] = False
+                        st.rerun()
+                else:
+                    # Load button - compact file uploader
+                    st.markdown("""
+                        <style>
+                        [data-testid="stFileUploader"] {
+                            width: max-content;
+                            margin-top: -1px;
+                        }
+                        [data-testid="stFileUploader"] section {
+                            padding: 0;
+                        }
+                        [data-testid="stFileUploader"] section > input + div {
+                            display: none;
+                        }
+                        [data-testid="stFileUploader"] section + div {
+                            display: none;
+                        }
+                        [data-testid="stFileUploader"] label {
+                            display: none !important;
+                        }
+                        [data-testid="stFileUploader"] button {
+                            width: 100%;
+                        }
+                        [data-testid="stFileUploader"] button span {
+                            font-size: 0;
+                        }
+                        [data-testid="stFileUploader"] button span::before {
+                            content: "Load saved file";
+                            font-size: 14px;
+                        }
+                        </style>
+                    """, unsafe_allow_html=True)
+                    
+                    uploaded_file = st.file_uploader("Load file", type=['json'], key="upload_state", label_visibility="collapsed")
+                    
+                    if uploaded_file is not None:
+                        try:
+                            state_json = uploaded_file.read().decode('utf-8')
+                            success, message = load_app_state(state_json)
+                            if success:
+                                st.session_state['state_just_loaded'] = True
+                                st.rerun()
+                            else:
+                                st.error(message)
+                        except Exception as e:
+                            st.error(f"Error: {str(e)}")
+            with top_c6:
                 analyze_options = ["OpenStreetMap", "Positron", "Satellite", "Blank"]
                 if st.session_state['current_base'] not in analyze_options:
                     st.session_state['current_base'] = 'OpenStreetMap'
