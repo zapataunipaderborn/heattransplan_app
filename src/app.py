@@ -755,6 +755,47 @@ with left:
                         p['connm'] = r1c3.text_input("Product ṁ", value=p.get('connm',''), key=f"p_connm_{i}")
                         p['conncp'] = r1c4.text_input("Product cp", value=p.get('conncp',''), key=f"p_conncp_{i}")
 
+                        r2c1,r2c2 = st.columns([1,1])
+                        p['lat'] = r2c1.text_input("Latitude", value=str(p.get('lat') or ''), key=f"p_lat_{i}")
+                        p['lon'] = r2c2.text_input("Longitude", value=str(p.get('lon') or ''), key=f"p_lon_{i}")
+
+                        # Extra Information expandable section
+                        if 'proc_extra_info_expanded' not in st.session_state:
+                            st.session_state['proc_extra_info_expanded'] = [False] * len(st.session_state['processes'])
+                        # Ensure list is correct length
+                        if len(st.session_state['proc_extra_info_expanded']) < len(st.session_state['processes']):
+                            st.session_state['proc_extra_info_expanded'].extend([False] * (len(st.session_state['processes']) - len(st.session_state['proc_extra_info_expanded'])))
+                        
+                        extra_header_cols = st.columns([0.05, 0.95])
+                        extra_toggle_label = "▾" if st.session_state['proc_extra_info_expanded'][i] else "▸"
+                        if extra_header_cols[0].button(extra_toggle_label, key=f"extra_info_toggle_{i}"):
+                            st.session_state['proc_extra_info_expanded'][i] = not st.session_state['proc_extra_info_expanded'][i]
+                            st.rerun()
+                        extra_header_cols[1].markdown("**Extra Information**")
+                        
+                        if st.session_state['proc_extra_info_expanded'][i]:
+                            # Initialize extra_info dict if not exists
+                            if 'extra_info' not in p:
+                                p['extra_info'] = {}
+                            
+                            extra_r1c1, extra_r1c2, extra_r1c3 = st.columns([1, 1, 1])
+                            p['extra_info']['water_content'] = extra_r1c1.text_input("Water Content", value=p.get('extra_info', {}).get('water_content', ''), key=f"p_water_{i}")
+                            p['extra_info']['density'] = extra_r1c2.text_input("Density", value=p.get('extra_info', {}).get('density', ''), key=f"p_density_{i}")
+                            p['extra_info']['viscosity'] = extra_r1c3.text_input("Viscosity", value=p.get('extra_info', {}).get('viscosity', ''), key=f"p_viscosity_{i}")
+                            
+                            extra_r2c1, extra_r2c2, extra_r2c3 = st.columns([1, 1, 1])
+                            p['extra_info']['pressure'] = extra_r2c1.text_input("Pressure", value=p.get('extra_info', {}).get('pressure', ''), key=f"p_pressure_{i}")
+                            p['extra_info']['ph_value'] = extra_r2c2.text_input("pH Value", value=p.get('extra_info', {}).get('ph_value', ''), key=f"p_ph_{i}")
+                            p['extra_info']['concentration'] = extra_r2c3.text_input("Concentration", value=p.get('extra_info', {}).get('concentration', ''), key=f"p_concentration_{i}")
+                            
+                            extra_r3c1, extra_r3c2, extra_r3c3 = st.columns([1, 1, 1])
+                            p['extra_info']['material'] = extra_r3c1.text_input("Material", value=p.get('extra_info', {}).get('material', ''), key=f"p_material_{i}")
+                            p['extra_info']['flow_rate'] = extra_r3c2.text_input("Flow Rate", value=p.get('extra_info', {}).get('flow_rate', ''), key=f"p_flow_{i}")
+                            p['extra_info']['power'] = extra_r3c3.text_input("Power", value=p.get('extra_info', {}).get('power', ''), key=f"p_power_{i}")
+                            
+                            # Custom notes field (full width)
+                            p['extra_info']['notes'] = st.text_area("Notes", value=p.get('extra_info', {}).get('notes', ''), key=f"p_notes_{i}", height=80)
+
                         # Multi-select for next processes (exclude self)
                         all_procs = st.session_state['processes']
                         if len(all_procs) <= 1:
