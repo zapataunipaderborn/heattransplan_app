@@ -749,16 +749,6 @@ with left:
                             st.rerun()
 
                     if st.session_state['proc_expanded'][i]:
-                        r1c1,r1c2,r1c3,r1c4 = st.columns([1,1,1,1])
-                        p['conntemp'] = r1c1.text_input("Product Tin", value=p.get('conntemp',''), key=f"p_conntemp_{i}")
-                        p['product_tout'] = r1c2.text_input("Product Tout", value=p.get('product_tout',''), key=f"p_ptout_{i}")
-                        p['connm'] = r1c3.text_input("Product ṁ", value=p.get('connm',''), key=f"p_connm_{i}")
-                        p['conncp'] = r1c4.text_input("Product cp", value=p.get('conncp',''), key=f"p_conncp_{i}")
-
-                        r2c1,r2c2 = st.columns([1,1])
-                        p['lat'] = r2c1.text_input("Latitude", value=str(p.get('lat') or ''), key=f"p_lat_{i}")
-                        p['lon'] = r2c2.text_input("Longitude", value=str(p.get('lon') or ''), key=f"p_lon_{i}")
-
                         # Extra Information expandable section
                         if 'proc_extra_info_expanded' not in st.session_state:
                             st.session_state['proc_extra_info_expanded'] = [False] * len(st.session_state['processes'])
@@ -774,6 +764,18 @@ with left:
                         extra_header_cols[1].markdown("**Extra Information**")
                         
                         if st.session_state['proc_extra_info_expanded'][i]:
+                            # Product information
+                            r1c1,r1c2,r1c3,r1c4 = st.columns([1,1,1,1])
+                            p['conntemp'] = r1c1.text_input("Product Tin", value=p.get('conntemp',''), key=f"p_conntemp_{i}")
+                            p['product_tout'] = r1c2.text_input("Product Tout", value=p.get('product_tout',''), key=f"p_ptout_{i}")
+                            p['connm'] = r1c3.text_input("Product ṁ", value=p.get('connm',''), key=f"p_connm_{i}")
+                            p['conncp'] = r1c4.text_input("Product cp", value=p.get('conncp',''), key=f"p_conncp_{i}")
+
+                            # Location information
+                            r2c1,r2c2 = st.columns([1,1])
+                            p['lat'] = r2c1.text_input("Latitude", value=str(p.get('lat') or ''), key=f"p_lat_{i}")
+                            p['lon'] = r2c2.text_input("Longitude", value=str(p.get('lon') or ''), key=f"p_lon_{i}")
+                            
                             # Initialize extra_info dict if not exists
                             if 'extra_info' not in p:
                                 p['extra_info'] = {}
