@@ -166,9 +166,12 @@ def export_to_csv():
     
     # Write header
     writer.writerow([
-        'Process', 'Subprocess', 'Latitude', 'Longitude', 
-        'Next Connection', 'Stream', 'Tin (°C)', 'Tout (°C)', 
-        'mdot', 'cp'
+        'Process', 'Subprocess', 'Process Latitude', 'Process Longitude', 'Process Hours',
+        'Next Connection', 'Stream', 'Stream Tin (°C)', 'Stream Tout (°C)', 
+        'Stream mdot', 'Stream cp',
+        'Product Tin', 'Product Tout', 'Product mdot', 'Product cp',
+        'Air Tin', 'Air Tout', 'Air mdot', 'Air cp',
+        'Water Content In', 'Water Content Out', 'Density', 'Pressure', 'Notes'
     ])
     
     # Get process group information
@@ -185,16 +188,40 @@ def export_to_csv():
     # Iterate through all subprocesses
     for subprocess_idx, subprocess in enumerate(st.session_state.get('processes', [])):
         subprocess_name = subprocess.get('name') or f"Subprocess {subprocess_idx+1}"
-        lat = subprocess.get('lat', '')
-        lon = subprocess.get('lon', '')
         next_connection = subprocess.get('next', '')
         
-        # Get process (group) name
+        # Get process (group) name and coordinates
         parent_group_idx = subprocess_to_group.get(subprocess_idx)
         if parent_group_idx is not None and parent_group_idx < len(proc_group_names):
             process_name = proc_group_names[parent_group_idx]
+            # Get process-level coordinates
+            group_coords = proc_group_coordinates.get(parent_group_idx, {})
+            process_lat = group_coords.get('lat', '')
+            process_lon = group_coords.get('lon', '')
+            process_hours = group_coords.get('hours', '')
         else:
             process_name = ''
+            process_lat = ''
+            process_lon = ''
+            process_hours = ''
+        
+        # Get subprocess product information
+        product_tin = subprocess.get('conntemp', '')
+        product_tout = subprocess.get('product_tout', '')
+        product_mdot = subprocess.get('connm', '')
+        product_cp = subprocess.get('conncp', '')
+        
+        # Get subprocess extra information
+        extra_info = subprocess.get('extra_info', {})
+        air_tin = extra_info.get('air_tin', '')
+        air_tout = extra_info.get('air_tout', '')
+        air_mdot = extra_info.get('air_mdot', '')
+        air_cp = extra_info.get('air_cp', '')
+        water_content_in = extra_info.get('water_content_in', '')
+        water_content_out = extra_info.get('water_content_out', '')
+        density = extra_info.get('density', '')
+        pressure = extra_info.get('pressure', '')
+        notes = extra_info.get('notes', '')
         
         # Get streams
         streams = subprocess.get('streams', [])
@@ -203,36 +230,64 @@ def export_to_csv():
             # One row per stream
             for stream_idx, stream in enumerate(streams):
                 stream_name = f"Stream {stream_idx + 1}"
-                tin = stream.get('temp_in', '')
-                tout = stream.get('temp_out', '')
-                mdot = stream.get('mdot', '')
-                cp = stream.get('cp', '')
+                stream_tin = stream.get('temp_in', '')
+                stream_tout = stream.get('temp_out', '')
+                stream_mdot = stream.get('mdot', '')
+                stream_cp = stream.get('cp', '')
                 
                 writer.writerow([
                     process_name,
                     subprocess_name,
-                    lat,
-                    lon,
+                    process_lat,
+                    process_lon,
+                    process_hours,
                     next_connection,
                     stream_name,
-                    tin,
-                    tout,
-                    mdot,
-                    cp
+                    stream_tin,
+                    stream_tout,
+                    stream_mdot,
+                    stream_cp,
+                    product_tin,
+                    product_tout,
+                    product_mdot,
+                    product_cp,
+                    air_tin,
+                    air_tout,
+                    air_mdot,
+                    air_cp,
+                    water_content_in,
+                    water_content_out,
+                    density,
+                    pressure,
+                    notes
                 ])
         else:
             # If no streams, still write subprocess info
             writer.writerow([
                 process_name,
                 subprocess_name,
-                lat,
-                lon,
+                process_lat,
+                process_lon,
+                process_hours,
                 next_connection,
                 '',  # No stream
-                '',  # No Tin
-                '',  # No Tout
-                '',  # No mdot
-                ''   # No cp
+                '',  # No Stream Tin
+                '',  # No Stream Tout
+                '',  # No Stream mdot
+                '',  # No Stream cp
+                product_tin,
+                product_tout,
+                product_mdot,
+                product_cp,
+                air_tin,
+                air_tout,
+                air_mdot,
+                air_cp,
+                water_content_in,
+                water_content_out,
+                density,
+                pressure,
+                notes
             ])
     
     return output.getvalue()
@@ -749,7 +804,7 @@ with left:
                             st.rerun()
 
                     if st.session_state['proc_expanded'][i]:
-                        # Extra Information expandable section
+                        # Information expandable section
                         if 'proc_extra_info_expanded' not in st.session_state:
                             st.session_state['proc_extra_info_expanded'] = [False] * len(st.session_state['processes'])
                         # Ensure list is correct length
@@ -761,7 +816,7 @@ with left:
                         if extra_header_cols[0].button(extra_toggle_label, key=f"extra_info_toggle_{i}"):
                             st.session_state['proc_extra_info_expanded'][i] = not st.session_state['proc_extra_info_expanded'][i]
                             st.rerun()
-                        extra_header_cols[1].markdown("**Extra Information**")
+                        extra_header_cols[1].markdown("**Information**")
                         
                         if st.session_state['proc_extra_info_expanded'][i]:
                             # Product information
@@ -770,30 +825,26 @@ with left:
                             p['product_tout'] = r1c2.text_input("Product Tout", value=p.get('product_tout',''), key=f"p_ptout_{i}")
                             p['connm'] = r1c3.text_input("Product ṁ", value=p.get('connm',''), key=f"p_connm_{i}")
                             p['conncp'] = r1c4.text_input("Product cp", value=p.get('conncp',''), key=f"p_conncp_{i}")
-
-                            # Location information
-                            r2c1,r2c2 = st.columns([1,1])
-                            p['lat'] = r2c1.text_input("Latitude", value=str(p.get('lat') or ''), key=f"p_lat_{i}")
-                            p['lon'] = r2c2.text_input("Longitude", value=str(p.get('lon') or ''), key=f"p_lon_{i}")
                             
                             # Initialize extra_info dict if not exists
                             if 'extra_info' not in p:
                                 p['extra_info'] = {}
                             
+                            # Air information
+                            air_r1c1, air_r1c2, air_r1c3, air_r1c4 = st.columns([1, 1, 1, 1])
+                            p['extra_info']['air_tin'] = air_r1c1.text_input("Air Tin", value=p.get('extra_info', {}).get('air_tin', ''), key=f"p_air_tin_{i}")
+                            p['extra_info']['air_tout'] = air_r1c2.text_input("Air Tout", value=p.get('extra_info', {}).get('air_tout', ''), key=f"p_air_tout_{i}")
+                            p['extra_info']['air_mdot'] = air_r1c3.text_input("Air ṁ", value=p.get('extra_info', {}).get('air_mdot', ''), key=f"p_air_mdot_{i}")
+                            p['extra_info']['air_cp'] = air_r1c4.text_input("Air cp", value=p.get('extra_info', {}).get('air_cp', ''), key=f"p_air_cp_{i}")
+                            
+                            # Additional properties
                             extra_r1c1, extra_r1c2, extra_r1c3 = st.columns([1, 1, 1])
-                            p['extra_info']['water_content'] = extra_r1c1.text_input("Water Content", value=p.get('extra_info', {}).get('water_content', ''), key=f"p_water_{i}")
-                            p['extra_info']['density'] = extra_r1c2.text_input("Density", value=p.get('extra_info', {}).get('density', ''), key=f"p_density_{i}")
-                            p['extra_info']['viscosity'] = extra_r1c3.text_input("Viscosity", value=p.get('extra_info', {}).get('viscosity', ''), key=f"p_viscosity_{i}")
+                            p['extra_info']['water_content_in'] = extra_r1c1.text_input("Water Content In", value=p.get('extra_info', {}).get('water_content_in', ''), key=f"p_water_in_{i}")
+                            p['extra_info']['water_content_out'] = extra_r1c2.text_input("Water Content Out", value=p.get('extra_info', {}).get('water_content_out', ''), key=f"p_water_out_{i}")
+                            p['extra_info']['density'] = extra_r1c3.text_input("Density", value=p.get('extra_info', {}).get('density', ''), key=f"p_density_{i}")
                             
-                            extra_r2c1, extra_r2c2, extra_r2c3 = st.columns([1, 1, 1])
+                            extra_r2c1 = st.columns([1])[0]
                             p['extra_info']['pressure'] = extra_r2c1.text_input("Pressure", value=p.get('extra_info', {}).get('pressure', ''), key=f"p_pressure_{i}")
-                            p['extra_info']['ph_value'] = extra_r2c2.text_input("pH Value", value=p.get('extra_info', {}).get('ph_value', ''), key=f"p_ph_{i}")
-                            p['extra_info']['concentration'] = extra_r2c3.text_input("Concentration", value=p.get('extra_info', {}).get('concentration', ''), key=f"p_concentration_{i}")
-                            
-                            extra_r3c1, extra_r3c2, extra_r3c3 = st.columns([1, 1, 1])
-                            p['extra_info']['material'] = extra_r3c1.text_input("Material", value=p.get('extra_info', {}).get('material', ''), key=f"p_material_{i}")
-                            p['extra_info']['flow_rate'] = extra_r3c2.text_input("Flow Rate", value=p.get('extra_info', {}).get('flow_rate', ''), key=f"p_flow_{i}")
-                            p['extra_info']['power'] = extra_r3c3.text_input("Power", value=p.get('extra_info', {}).get('power', ''), key=f"p_power_{i}")
                             
                             # Custom notes field (full width)
                             p['extra_info']['notes'] = st.text_area("Notes", value=p.get('extra_info', {}).get('notes', ''), key=f"p_notes_{i}", height=80)
@@ -1255,6 +1306,9 @@ div.leaflet-container {background: #f2f2f3 !important;}
                             success, message = load_app_state(file_contents)
                             if success:
                                 st.session_state['state_just_loaded'] = True
+                                # Clear the file uploader to prevent MediaFileStorageError
+                                if 'upload_state' in st.session_state:
+                                    del st.session_state['upload_state']
                                 st.rerun()
                             else:
                                 st.error(message)
