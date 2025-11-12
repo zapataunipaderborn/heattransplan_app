@@ -299,7 +299,7 @@ st.set_page_config(page_title="Energy Data Collection", layout="wide")
 st.markdown("""
 <style>
 /* Base tweaks */
-.block-container {padding-top:0.4rem; padding-bottom:0.3rem;}
+.block-container {padding-top:0rem; padding-bottom:0.3rem;}
 div[data-testid="column"] > div:has(> div.map-region) {margin-top:0;}
 .map-control-row {margin-bottom:0.25rem;}
 
@@ -357,27 +357,14 @@ div.streamlit-expanderHeader {padding:0.3rem 0.5rem !important;}
 .group-box.collapsed {padding-bottom:4px;}
 
 /* Title with icon */
-.title-container {display: flex; align-items: center; gap: 20px; margin-bottom: 10px; margin-top: 15px;}
-.title-icon {width: 120px; height: auto;}
-
+.title-container {display: flex; align-items: center; gap: 20px; margin-bottom: 10px; margin-top: 0px;}
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
 
-# Read and encode the SVG
-import base64
-try:
-    with open('../data/symbol.svg', 'rb') as f:
-        svg_data = f.read()
-    svg_b64 = base64.b64encode(svg_data).decode()
-    svg_html = f'<img src="data:image/svg+xml;base64,{svg_b64}" class="title-icon" alt="Symbol">'
-except:
-    svg_html = ''  # Fallback if file not found
-
-st.markdown(f"""
+st.markdown("""
 <div class="title-container">
-    {svg_html}
     <h1 style="margin:0;">Energy Data Collection</h1>
 </div>
 """, unsafe_allow_html=True)
