@@ -7,6 +7,9 @@ from PIL import Image, ImageDraw, ImageFont
 from staticmap import StaticMap, CircleMarker
 from streamlit_image_coordinates import streamlit_image_coordinates
 from math import radians, cos, sin, sqrt, atan2
+import json
+import base64
+from datetime import datetime
 from process_utils import (
     init_process_state,
     add_process,
@@ -14,6 +17,7 @@ from process_utils import (
     add_stream_to_process,
     delete_stream_from_process,
 )
+import csv
 
 # Helper: convert pixel (relative to center) in snapshot to lon/lat using Web Mercator math
 def snapshot_pixel_to_lonlat(px, py, center_ll, z_level, img_w, img_h):
@@ -61,36 +65,276 @@ def snapshot_lonlat_to_pixel(lon_val_in, lat_val_in, center_ll, z_level, img_w, 
     snapshot_py = img_h / 2 + dytile * px_per_tile
     return snapshot_px, snapshot_py
 
-st.set_page_config(page_title="Heat Integration analysis", layout="wide")
+# Helper functions for saving and loading app state
+def save_app_state():
+    """Save the current app state to a JSON file"""
+    state_to_save = {
+        'timestamp': datetime.now().isoformat(),
+        'map_locked': st.session_state.get('map_locked', False),
+        'map_center': st.session_state.get('map_center', []),
+        'map_zoom': st.session_state.get('map_zoom', 17.5),
+        'current_base': st.session_state.get('current_base', 'OpenStreetMap'),
+        'processes': st.session_state.get('processes', []),
+        'proc_groups': st.session_state.get('proc_groups', []),
+        'proc_group_names': st.session_state.get('proc_group_names', []),
+        'proc_group_expanded': st.session_state.get('proc_group_expanded', []),
+        'proc_group_coordinates': st.session_state.get('proc_group_coordinates', {}),
+        'proc_group_info_expanded': st.session_state.get('proc_group_info_expanded', []),
+    }
+    
+    # Convert snapshots to base64 for JSON serialization
+    snapshots = st.session_state.get('map_snapshots', {})
+    encoded_snapshots = {}
+    for key, img_bytes in snapshots.items():
+        if img_bytes:
+            encoded_snapshots[key] = base64.b64encode(img_bytes).decode('utf-8')
+    state_to_save['map_snapshots_encoded'] = encoded_snapshots
+    
+    return json.dumps(state_to_save, indent=2)
+
+def load_app_state(state_json):
+    """Load app state from JSON data"""
+    try:
+        state = json.loads(state_json)
+        
+        # Restore session state
+        st.session_state['map_locked'] = state.get('map_locked', False)
+        st.session_state['map_center'] = state.get('map_center', [])
+        st.session_state['map_zoom'] = state.get('map_zoom', 17.5)
+        st.session_state['current_base'] = state.get('current_base', 'OpenStreetMap')
+        st.session_state['processes'] = state.get('processes', [])
+        st.session_state['proc_groups'] = state.get('proc_groups', [])
+        st.session_state['proc_group_names'] = state.get('proc_group_names', [])
+        st.session_state['proc_group_expanded'] = state.get('proc_group_expanded', [])
+        
+        # Convert proc_group_coordinates keys to integers (JSON converts them to strings)
+        raw_coords = state.get('proc_group_coordinates', {})
+        converted_coords = {}
+        for key, value in raw_coords.items():
+            converted_coords[int(key) if isinstance(key, str) else key] = value
+        st.session_state['proc_group_coordinates'] = converted_coords
+        
+        st.session_state['proc_group_info_expanded'] = state.get('proc_group_info_expanded', [])
+        
+        # Restore snapshots from base64
+        encoded_snapshots = state.get('map_snapshots_encoded', {})
+        decoded_snapshots = {}
+        for key, encoded_data in encoded_snapshots.items():
+            decoded_snapshots[key] = base64.b64decode(encoded_data)
+        st.session_state['map_snapshots'] = decoded_snapshots
+        
+        # Set the main snapshot - use current_base to get the right one
+        current_base = state.get('current_base', 'OpenStreetMap')
+        if decoded_snapshots:
+            st.session_state['map_snapshot'] = decoded_snapshots.get(current_base) or decoded_snapshots.get('OpenStreetMap')
+        
+        # Also set analyze_base_layer to match
+        st.session_state['analyze_base_layer'] = current_base
+        
+        # Update selector state to match loaded map
+        st.session_state['selector_center'] = state.get('map_center', [])[:]
+        st.session_state['selector_zoom'] = state.get('map_zoom', 17.5)
+        
+        # Reset UI interaction states to prevent freeze
+        st.session_state['placement_mode'] = False
+        st.session_state['placing_process_idx'] = None
+        st.session_state['measure_mode'] = False
+        st.session_state['measure_points'] = []
+        st.session_state['measure_distance_m'] = None
+        st.session_state['ui_status_msg'] = "State loaded successfully"
+        
+        # Initialize proc_expanded if processes exist
+        if 'proc_expanded' not in st.session_state or len(st.session_state['proc_expanded']) != len(state.get('processes', [])):
+            st.session_state['proc_expanded'] = [False] * len(state.get('processes', []))
+        
+        # Switch to Analyze mode if map was locked
+        if state.get('map_locked', False):
+            st.session_state['ui_mode_radio'] = 'Analyze'
+        else:
+            st.session_state['ui_mode_radio'] = 'Select Map'
+        
+        return True, f"State loaded successfully from {state.get('timestamp', 'unknown time')}"
+    except Exception as e:
+        return False, f"Error loading state: {str(e)}"
+
+def export_to_csv():
+    """Export all process data to CSV format with one row per stream"""
+    from io import StringIO
+    
+    output = StringIO()
+    writer = csv.writer(output)
+    
+    # Write header
+    writer.writerow([
+        'Process', 'Subprocess', 'Process Latitude', 'Process Longitude', 'Process Hours',
+        'Next Connection', 'Stream', 'Stream Tin (°C)', 'Stream Tout (°C)', 
+        'Stream mdot', 'Stream cp',
+        'Product Tin', 'Product Tout', 'Product mdot', 'Product cp',
+        'Air Tin', 'Air Tout', 'Air mdot', 'Air cp',
+        'Water Content In', 'Water Content Out', 'Density', 'Pressure', 'Notes'
+    ])
+    
+    # Get process group information
+    proc_groups = st.session_state.get('proc_groups', [])
+    proc_group_names = st.session_state.get('proc_group_names', [])
+    proc_group_coordinates = st.session_state.get('proc_group_coordinates', {})
+    
+    # Create mapping of subprocess index to group
+    subprocess_to_group = {}
+    for group_idx, group_subprocess_list in enumerate(proc_groups):
+        for subprocess_idx in group_subprocess_list:
+            subprocess_to_group[subprocess_idx] = group_idx
+    
+    # Iterate through all subprocesses
+    for subprocess_idx, subprocess in enumerate(st.session_state.get('processes', [])):
+        subprocess_name = subprocess.get('name') or f"Subprocess {subprocess_idx+1}"
+        next_connection = subprocess.get('next', '')
+        
+        # Get process (group) name and coordinates
+        parent_group_idx = subprocess_to_group.get(subprocess_idx)
+        if parent_group_idx is not None and parent_group_idx < len(proc_group_names):
+            process_name = proc_group_names[parent_group_idx]
+            # Get process-level coordinates
+            group_coords = proc_group_coordinates.get(parent_group_idx, {})
+            process_lat = group_coords.get('lat', '')
+            process_lon = group_coords.get('lon', '')
+            process_hours = group_coords.get('hours', '')
+        else:
+            process_name = ''
+            process_lat = ''
+            process_lon = ''
+            process_hours = ''
+        
+        # Get subprocess product information
+        product_tin = subprocess.get('conntemp', '')
+        product_tout = subprocess.get('product_tout', '')
+        product_mdot = subprocess.get('connm', '')
+        product_cp = subprocess.get('conncp', '')
+        
+        # Get subprocess extra information
+        extra_info = subprocess.get('extra_info', {})
+        air_tin = extra_info.get('air_tin', '')
+        air_tout = extra_info.get('air_tout', '')
+        air_mdot = extra_info.get('air_mdot', '')
+        air_cp = extra_info.get('air_cp', '')
+        water_content_in = extra_info.get('water_content_in', '')
+        water_content_out = extra_info.get('water_content_out', '')
+        density = extra_info.get('density', '')
+        pressure = extra_info.get('pressure', '')
+        notes = extra_info.get('notes', '')
+        
+        # Get streams
+        streams = subprocess.get('streams', [])
+        
+        if streams:
+            # One row per stream
+            for stream_idx, stream in enumerate(streams):
+                stream_name = f"Stream {stream_idx + 1}"
+                stream_tin = stream.get('temp_in', '')
+                stream_tout = stream.get('temp_out', '')
+                stream_mdot = stream.get('mdot', '')
+                stream_cp = stream.get('cp', '')
+                
+                writer.writerow([
+                    process_name,
+                    subprocess_name,
+                    process_lat,
+                    process_lon,
+                    process_hours,
+                    next_connection,
+                    stream_name,
+                    stream_tin,
+                    stream_tout,
+                    stream_mdot,
+                    stream_cp,
+                    product_tin,
+                    product_tout,
+                    product_mdot,
+                    product_cp,
+                    air_tin,
+                    air_tout,
+                    air_mdot,
+                    air_cp,
+                    water_content_in,
+                    water_content_out,
+                    density,
+                    pressure,
+                    notes
+                ])
+        else:
+            # If no streams, still write subprocess info
+            writer.writerow([
+                process_name,
+                subprocess_name,
+                process_lat,
+                process_lon,
+                process_hours,
+                next_connection,
+                '',  # No stream
+                '',  # No Stream Tin
+                '',  # No Stream Tout
+                '',  # No Stream mdot
+                '',  # No Stream cp
+                product_tin,
+                product_tout,
+                product_mdot,
+                product_cp,
+                air_tin,
+                air_tout,
+                air_mdot,
+                air_cp,
+                water_content_in,
+                water_content_out,
+                density,
+                pressure,
+                notes
+            ])
+    
+    return output.getvalue()
+
+
+st.set_page_config(page_title="Energy Data Collection", layout="wide")
 
 # Compact top padding & utility CSS to keep map tight to top-right
 st.markdown("""
 <style>
 /* Base tweaks */
-.block-container {padding-top:0.6rem; padding-bottom:0.5rem;}
+.block-container {padding-top:0.4rem; padding-bottom:0.3rem;}
 div[data-testid="column"] > div:has(> div.map-region) {margin-top:0;}
 .map-control-row {margin-bottom:0.25rem;}
 
+/* Make everything smaller by default */
+html, body, .stApp {font-size:13px !important;}
+.stMarkdown p, .stMarkdown span, .stMarkdown li {font-size:13px !important;}
+.stButton button {font-size:12px !important; padding:0.2rem 0.4rem !important;}
+.stTextInput input, .stNumberInput input {font-size:12px !important; padding:0.2rem 0.3rem !important;}
+.stRadio > div[role=radio] label {font-size:12px !impohrtant;}
+.stDataFrame, .stDataFrame table {font-size:11px !important;}
+.stSlider {font-size:11px !important;}
+
+/* Title smaller */
+h1 {font-size: 1.8rem !important; margin-bottom: 0.5rem !important;}
+
 /* Responsive typography & control sizing */
 @media (max-width: 1500px){
-    html, body, .stApp {font-size:14px;}
-    .stMarkdown p, .stMarkdown span, .stMarkdown li {font-size:14px !important;}
-    .stButton button {font-size:13px !important; padding:0.25rem 0.55rem !important;}
-    .stTextInput input, .stNumberInput input {font-size:13px !important; padding:0.25rem 0.4rem !important;}
-    .stRadio > div[role=radio] label {font-size:13px !important;}
+    html, body, .stApp {font-size:12px !important;}
+    .stMarkdown p, .stMarkdown span, .stMarkdown li {font-size:12px !important;}
+    .stButton button {font-size:11px !important; padding:0.2rem 0.4rem !important;}
+    .stTextInput input, .stNumberInput input {font-size:11px !important; padding:0.2rem 0.3rem !important;}
+    .stRadio > div[role=radio] label {font-size:11px !important;}
 }
 @media (max-width: 1200px){
-    html, body, .stApp {font-size:13px;}
-    .stMarkdown p, .stMarkdown span, .stMarkdown li {font-size:13px !important;}
-    .stButton button {font-size:12px !important;}
-    .stTextInput input, .stNumberInput input {font-size:12px !important;}
+    html, body, .stApp {font-size:11px !important;}
+    .stMarkdown p, .stMarkdown span, .stMarkdown li {font-size:11px !important;}
+    .stButton button {font-size:10px !important;}
+    .stTextInput input, .stNumberInput input {font-size:10px !important;}
 }
 @media (max-width: 1000px){
-    html, body, .stApp {font-size:12px;}
-    .stMarkdown p, .stMarkdown span, .stMarkdown li {font-size:12px !important;}
-    .stButton button {font-size:11px !important; padding:0.2rem 0.45rem !important;}
-    .stTextInput input, .stNumberInput input {font-size:11px !important; padding:0.2rem 0.35rem !important;}
-    .stDataFrame, .stDataFrame table {font-size:11px !important;}
+    html, body, .stApp {font-size:10px !important;}
+    .stMarkdown p, .stMarkdown span, .stMarkdown li {font-size:10px !important;}
+    .stButton button {font-size:9px !important; padding:0.15rem 0.35rem !important;}
+    .stTextInput input, .stNumberInput input {font-size:9px !important; padding:0.15rem 0.25rem !important;}
+    .stDataFrame, .stDataFrame table {font-size:9px !important;}
 }
 
 /* Make map & snapshot adapt on narrow screens */
@@ -112,14 +356,34 @@ div.streamlit-expanderHeader {padding:0.3rem 0.5rem !important;}
 .group-box {border:2px solid #ffffff; padding:6px 8px 8px 8px; margin:10px 0 16px 0; border-radius:6px; background:rgba(255,255,255,0.04);} 
 .group-box.collapsed {padding-bottom:4px;}
 
+/* Title with icon */
+.title-container {display: flex; align-items: center; gap: 20px; margin-bottom: 10px; margin-top: 15px;}
+.title-icon {width: 120px; height: auto;}
+
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<div style='height:22px'></div>", unsafe_allow_html=True)
-st.title("Heat Integration analysis")
+st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
-MAP_WIDTH = 1500  # widened map (extends to the right)
-MAP_HEIGHT = 860  # taller snapshot for more vertical space
+# Read and encode the SVG
+import base64
+try:
+    with open('../data/symbol.svg', 'rb') as f:
+        svg_data = f.read()
+    svg_b64 = base64.b64encode(svg_data).decode()
+    svg_html = f'<img src="data:image/svg+xml;base64,{svg_b64}" class="title-icon" alt="Symbol">'
+except:
+    svg_html = ''  # Fallback if file not found
+
+st.markdown(f"""
+<div class="title-container">
+    {svg_html}
+    <h1 style="margin:0;">Energy Data Collection</h1>
+</div>
+""", unsafe_allow_html=True)
+
+MAP_WIDTH = 1200  # Reduced width for better responsiveness (was 1300)
+MAP_HEIGHT = 650  # Slightly reduced height too
 
 # Tile templates for snapshot capture (static)
 TILE_TEMPLATES = {
@@ -149,6 +413,9 @@ if 'analyze_base_choice' not in st.session_state:
 # Initialize address input explicitly (prevents KeyError after widget key changes)
 if 'address_input' not in st.session_state:
     st.session_state['address_input'] = ''
+# State load tracking
+if 'state_just_loaded' not in st.session_state:
+    st.session_state['state_just_loaded'] = False
 # Clean orphaned internal widget state keys left from layout changes (optional safeguard)
 for _k in list(st.session_state.keys()):
     if isinstance(_k, str) and _k.startswith('$$WIDGET_ID-'):
@@ -165,11 +432,13 @@ if 'placing_process_idx' not in st.session_state: st.session_state['placing_proc
 if 'placement_mode' not in st.session_state: st.session_state['placement_mode'] = False
 if 'ui_status_msg' not in st.session_state: st.session_state['ui_status_msg'] = None
 if 'analyze_base_layer' not in st.session_state: st.session_state['analyze_base_layer'] = 'OpenStreetMap'
+# Group coordinates storage
+if 'proc_group_coordinates' not in st.session_state: st.session_state['proc_group_coordinates'] = {}
 # Unified persistent base layer selection (only changed by user interaction)
 if 'current_base' not in st.session_state:
     st.session_state['current_base'] = 'OpenStreetMap'
 
-left, right = st.columns([2.4, 5.6], gap="small")  # wider subprocess panel, smaller gap to map
+left, right = st.columns([2, 6], gap="small")  # Much smaller left panel, much wider map area
 
 with left:
     # Compact mode buttons side by side
@@ -177,8 +446,18 @@ with left:
     if mode_current == "Select Map":
         col_lock = st.columns([1])[0]
         if col_lock.button("Lock map and analyze", key="btn_lock_analyze"):
-            new_center = st.session_state['selector_center'][:]
-            new_zoom = st.session_state['selector_zoom']
+            # Use current live map state instead of stored selector values
+            current_center = st.session_state.get('current_map_center')
+            current_zoom = st.session_state.get('current_map_zoom')
+            
+            # Fallback to selector values if current state not available
+            if current_center is None or current_zoom is None:
+                new_center = st.session_state['selector_center'][:]
+                new_zoom = st.session_state['selector_zoom']
+            else:
+                new_center = current_center[:]
+                new_zoom = current_zoom
+                
             selected_base_now = st.session_state.get('current_base', 'OpenStreetMap')
             existing_snaps = st.session_state.get('map_snapshots', {})
             regenerate = (
@@ -188,10 +467,12 @@ with left:
                 (selected_base_now not in existing_snaps)  # ensure chosen base available
             )
             st.session_state['map_center'] = new_center
-            st.session_state['map_zoom'] = new_zoom
+            st.session_state['map_zoom'] = new_zoom  # Store exact zoom for coordinate calculations
             if regenerate:
                 try:
                     snapshots = {}
+                    # Use rounded zoom for tile rendering but keep exact zoom for coordinates
+                    render_zoom = round(float(new_zoom))
                     for layer_name, template in TILE_TEMPLATES.items():
                         smap = StaticMap(MAP_WIDTH, MAP_HEIGHT, url_template=template)
                         try:
@@ -199,7 +480,8 @@ with left:
                             smap.add_marker(marker)
                         except (RuntimeError, OSError):
                             pass
-                        img_layer = smap.render(zoom=int(new_zoom))
+                        # Use rounded zoom instead of truncated to better match Folium view
+                        img_layer = smap.render(zoom=render_zoom)
                         if img_layer is None:
                             st.error(f"Failed to render {layer_name} map layer")
                             continue
@@ -234,6 +516,13 @@ with left:
     else:  # Analyze mode
         col_unlock, col_add = st.columns([1,1])
         if col_unlock.button("Unlock map and select", key="btn_unlock_select"):
+            # Preserve current locked map position for seamless transition
+            if st.session_state.get('map_center') and st.session_state.get('map_zoom'):
+                st.session_state['selector_center'] = st.session_state['map_center'][:]
+                st.session_state['selector_zoom'] = st.session_state['map_zoom']
+                st.session_state['current_map_center'] = st.session_state['map_center'][:]
+                st.session_state['current_map_zoom'] = st.session_state['map_zoom']
+            
             st.session_state.update({
                 'ui_mode_radio': 'Select Map',
                 'map_locked': False,
@@ -257,9 +546,15 @@ with left:
             st.session_state['proc_group_names'].append(f"Process {len(st.session_state['proc_groups'])}")
             if 'proc_group_expanded' not in st.session_state:
                 st.session_state['proc_group_expanded'] = []
-            st.session_state['proc_group_expanded'].append(True)
+            st.session_state['proc_group_expanded'].append(False)  # Start collapsed by default
+            if 'proc_group_info_expanded' not in st.session_state:
+                st.session_state['proc_group_info_expanded'] = []
+            st.session_state['proc_group_info_expanded'].append(False)  # Start collapsed by default
             st.session_state['ui_status_msg'] = "Added new empty process"
             st.rerun()
+    
+    st.markdown("---")
+    
     mode = st.session_state['ui_mode_radio']
     # Subprocess & Stream UI (only show in Analyze mode to mimic original workflow)
     if mode == "Analyze":
@@ -287,9 +582,9 @@ with left:
             # Align names & expanded arrays to group list length
             group_count = len(st.session_state['proc_groups'])
             if 'proc_group_expanded' not in st.session_state:
-                st.session_state['proc_group_expanded'] = [True]*group_count
+                st.session_state['proc_group_expanded'] = [False]*group_count  # Start collapsed by default
             elif len(st.session_state['proc_group_expanded']) != group_count:
-                st.session_state['proc_group_expanded'] = [st.session_state['proc_group_expanded'][g] if g < len(st.session_state['proc_group_expanded']) else True for g in range(group_count)]
+                st.session_state['proc_group_expanded'] = [st.session_state['proc_group_expanded'][g] if g < len(st.session_state['proc_group_expanded']) else False for g in range(group_count)]
             if 'proc_group_names' not in st.session_state:
                 st.session_state['proc_group_names'] = [f"Group {g+1}" for g in range(group_count)]
             elif len(st.session_state['proc_group_names']) != group_count:
@@ -299,6 +594,11 @@ with left:
                 else:
                     current_names = current_names[:group_count]
                 st.session_state['proc_group_names'] = current_names
+            # Initialize information expanded state
+            if 'proc_group_info_expanded' not in st.session_state:
+                st.session_state['proc_group_info_expanded'] = [False]*group_count  # Start collapsed by default
+            elif len(st.session_state['proc_group_info_expanded']) != group_count:
+                st.session_state['proc_group_info_expanded'] = [st.session_state['proc_group_info_expanded'][g] if g < len(st.session_state['proc_group_info_expanded']) else False for g in range(group_count)]
             # Track group delete confirmation
             if 'group_delete_pending' not in st.session_state:
                 st.session_state['group_delete_pending'] = None
@@ -318,8 +618,8 @@ with left:
             for g, g_list in enumerate(st.session_state['proc_groups']):
                 # Top thick separator for group
                 st.markdown("<div style='height:3px; background:#888888; margin:12px 0 6px;'></div>", unsafe_allow_html=True)
-                # Arrow | Name | Add subprocess | Count | Delete
-                gh_cols = st.columns([0.05, 0.40, 0.20, 0.10, 0.10])
+                # Arrow | Name | Place | Count | Delete
+                gh_cols = st.columns([0.05, 0.50, 0.15, 0.12, 0.10])
                 g_toggle_label = "▾" if st.session_state['proc_group_expanded'][g] else "▸"
                 if gh_cols[0].button(g_toggle_label, key=f"group_toggle_{g}"):
                     st.session_state['proc_group_expanded'][g] = not st.session_state['proc_group_expanded'][g]
@@ -327,17 +627,24 @@ with left:
                 default_name = st.session_state['proc_group_names'][g]
                 new_name = gh_cols[1].text_input("Group name", value=default_name, key=f"group_name_{g}", label_visibility="collapsed", placeholder=f"Group {g+1}")
                 st.session_state['proc_group_names'][g] = new_name.strip() or default_name
-                if gh_cols[2].button("Add subprocess", key=f"add_proc_group_{g}"):
-                    add_process(st.session_state)
-                    new_idx = len(st.session_state['processes']) - 1
-                    g_list.append(new_idx)
-                    # Ensure proc_expanded has entry and keep it collapsed
-                    if len(st.session_state['proc_expanded']) <= new_idx:
-                        st.session_state['proc_expanded'].append(False)
-                    else:
-                        st.session_state['proc_expanded'][new_idx] = False
-                    st.session_state['ui_status_msg'] = f"Added subprocess to {st.session_state['proc_group_names'][g]}"
-                    st.rerun()
+                
+                # Place button for the group/process
+                group_place_active = (st.session_state['placement_mode'] and st.session_state.get('placing_process_idx') == f"group_{g}")
+                if not group_place_active:
+                    if gh_cols[2].button("Place", key=f"place_group_{g}"):
+                        st.session_state['placement_mode'] = True
+                        st.session_state['measure_mode'] = False
+                        st.session_state['placing_process_idx'] = f"group_{g}"
+                        group_name = st.session_state['proc_group_names'][g]
+                        st.session_state['ui_status_msg'] = f"Click on map to place: {group_name}"
+                        st.rerun()
+                else:
+                    if gh_cols[2].button("Done", key=f"done_place_group_{g}"):
+                        st.session_state['placement_mode'] = False
+                        st.session_state['placing_process_idx'] = None
+                        st.session_state['ui_status_msg'] = "Placement mode disabled"
+                        st.rerun()
+                
                 gh_cols[3].markdown(f"**{len(g_list)}**")
                 pending_group = st.session_state.get('group_delete_pending')
                 with gh_cols[4]:
@@ -352,6 +659,7 @@ with left:
                             st.session_state['proc_groups'].pop(g)
                             st.session_state['proc_group_names'].pop(g)
                             st.session_state['proc_group_expanded'].pop(g)
+                            st.session_state['proc_group_info_expanded'].pop(g)
                             st.session_state['group_delete_pending'] = None
                             st.session_state['ui_status_msg'] = "Group deleted"
                             st.rerun()
@@ -369,6 +677,72 @@ with left:
 
                 if not g_list:
                     st.caption("(No processes in this group)")
+                
+                # Add collapsible information section for the main process (group level)
+                info_header_cols = st.columns([0.05, 0.95])
+                info_toggle_label = "▾" if st.session_state['proc_group_info_expanded'][g] else "▸"
+                if info_header_cols[0].button(info_toggle_label, key=f"info_toggle_{g}"):
+                    st.session_state['proc_group_info_expanded'][g] = not st.session_state['proc_group_info_expanded'][g]
+                    st.rerun()
+                info_header_cols[1].markdown("**Information**")
+                
+                if st.session_state['proc_group_info_expanded'][g]:
+                    info_row1_cols = st.columns([1, 1, 1])
+                    
+                    # Initialize process coordinates and data if not exists
+                    if 'proc_group_coordinates' not in st.session_state:
+                        st.session_state['proc_group_coordinates'] = {}
+                    if g not in st.session_state['proc_group_coordinates']:
+                        st.session_state['proc_group_coordinates'][g] = {'lat': '', 'lon': '', 'hours': ''}
+                    
+                    current_coords = st.session_state['proc_group_coordinates'][g]
+                    new_lat = info_row1_cols[0].text_input("Latitude", value=str(current_coords.get('lat', '') or ''), key=f"group_lat_{g}")
+                    new_lon = info_row1_cols[1].text_input("Longitude", value=str(current_coords.get('lon', '') or ''), key=f"group_lon_{g}")
+                    new_hours = info_row1_cols[2].text_input("Hours", value=str(current_coords.get('hours', '') or ''), key=f"group_hours_{g}")
+                    
+                    # Update coordinates and hours in session state
+                    st.session_state['proc_group_coordinates'][g]['lat'] = new_lat if new_lat.strip() else ''
+                    st.session_state['proc_group_coordinates'][g]['lon'] = new_lon if new_lon.strip() else ''
+                    st.session_state['proc_group_coordinates'][g]['hours'] = new_hours if new_hours.strip() else ''
+                    
+                    # Next Processes dropdown for the group
+                    if 'proc_group_next' not in st.session_state:
+                        st.session_state['proc_group_next'] = {}
+                    if g not in st.session_state['proc_group_next']:
+                        st.session_state['proc_group_next'][g] = ''
+                    
+                    # Build option list of other process group names
+                    all_group_names = st.session_state.get('proc_group_names', [])
+                    if len(all_group_names) <= 1:
+                        st.caption("To connect processes, add more than one process group")
+                        st.session_state['proc_group_next'][g] = ''
+                    else:
+                        # Create options excluding current group
+                        options = [name for idx, name in enumerate(all_group_names) if idx != g]
+                        
+                        # Current selection
+                        current_next = st.session_state['proc_group_next'][g]
+                        default_selection = [current_next] if current_next and current_next in options else []
+                        
+                        selected = st.multiselect("Next Processes", options=options, default=default_selection, key=f"group_next_multi_{g}")
+                        # Store as comma-separated names  
+                        st.session_state['proc_group_next'][g] = ", ".join(selected) if selected else ''
+                
+                # Subprocesses section with Add subprocess button
+                sub_header_cols = st.columns([0.7, 0.3])
+                sub_header_cols[0].markdown("**Subprocesses:**")
+                if sub_header_cols[1].button("Add subprocess", key=f"add_proc_group_{g}"):
+                    add_process(st.session_state)
+                    new_idx = len(st.session_state['processes']) - 1
+                    g_list.append(new_idx)
+                    # Ensure proc_expanded has entry and keep it collapsed
+                    if len(st.session_state['proc_expanded']) <= new_idx:
+                        st.session_state['proc_expanded'].append(False)
+                    else:
+                        st.session_state['proc_expanded'][new_idx] = False
+                    st.session_state['ui_status_msg'] = f"Added subprocess to {st.session_state['proc_group_names'][g]}"
+                    st.rerun()
+                
                 for local_idx, i in enumerate(g_list):
                     p = st.session_state['processes'][i]
                     # Per-subprocess header (toggle | name | size | place | delete)
@@ -405,11 +779,13 @@ with left:
                             st.session_state['placement_mode'] = True
                             st.session_state['measure_mode'] = False
                             st.session_state['placing_process_idx'] = i
+                            st.session_state['ui_status_msg'] = f"Click on map to place: {p.get('name') or f'Subprocess {i+1}'}"
                             st.rerun()
                     else:
                         if header_cols[3].button("Done", key=f"done_place_{i}"):
                             st.session_state['placement_mode'] = False
                             st.session_state['placing_process_idx'] = None
+                            st.session_state['ui_status_msg'] = "Placement mode disabled"
                             st.rerun()
                     pending = st.session_state.get('proc_delete_pending')
                     if pending == i:
@@ -428,21 +804,56 @@ with left:
                             st.rerun()
 
                     if st.session_state['proc_expanded'][i]:
-                        r1c1,r1c2,r1c3,r1c4 = st.columns([1,1,1,1])
-                        p['conntemp'] = r1c1.text_input("Product Tin", value=p.get('conntemp',''), key=f"p_conntemp_{i}")
-                        p['product_tout'] = r1c2.text_input("Product Tout", value=p.get('product_tout',''), key=f"p_ptout_{i}")
-                        p['connm'] = r1c3.text_input("Product ṁ", value=p.get('connm',''), key=f"p_connm_{i}")
-                        p['conncp'] = r1c4.text_input("Product cp", value=p.get('conncp',''), key=f"p_conncp_{i}")
+                        # Information expandable section
+                        if 'proc_extra_info_expanded' not in st.session_state:
+                            st.session_state['proc_extra_info_expanded'] = [False] * len(st.session_state['processes'])
+                        # Ensure list is correct length
+                        if len(st.session_state['proc_extra_info_expanded']) < len(st.session_state['processes']):
+                            st.session_state['proc_extra_info_expanded'].extend([False] * (len(st.session_state['processes']) - len(st.session_state['proc_extra_info_expanded'])))
+                        
+                        extra_header_cols = st.columns([0.05, 0.95])
+                        extra_toggle_label = "▾" if st.session_state['proc_extra_info_expanded'][i] else "▸"
+                        if extra_header_cols[0].button(extra_toggle_label, key=f"extra_info_toggle_{i}"):
+                            st.session_state['proc_extra_info_expanded'][i] = not st.session_state['proc_extra_info_expanded'][i]
+                            st.rerun()
+                        extra_header_cols[1].markdown("**Information**")
+                        
+                        if st.session_state['proc_extra_info_expanded'][i]:
+                            # Product information
+                            r1c1,r1c2,r1c3,r1c4 = st.columns([1,1,1,1])
+                            p['conntemp'] = r1c1.text_input("Product Tin", value=p.get('conntemp',''), key=f"p_conntemp_{i}")
+                            p['product_tout'] = r1c2.text_input("Product Tout", value=p.get('product_tout',''), key=f"p_ptout_{i}")
+                            p['connm'] = r1c3.text_input("Product ṁ", value=p.get('connm',''), key=f"p_connm_{i}")
+                            p['conncp'] = r1c4.text_input("Product cp", value=p.get('conncp',''), key=f"p_conncp_{i}")
+                            
+                            # Initialize extra_info dict if not exists
+                            if 'extra_info' not in p:
+                                p['extra_info'] = {}
+                            
+                            # Air information
+                            air_r1c1, air_r1c2, air_r1c3, air_r1c4 = st.columns([1, 1, 1, 1])
+                            p['extra_info']['air_tin'] = air_r1c1.text_input("Air Tin", value=p.get('extra_info', {}).get('air_tin', ''), key=f"p_air_tin_{i}")
+                            p['extra_info']['air_tout'] = air_r1c2.text_input("Air Tout", value=p.get('extra_info', {}).get('air_tout', ''), key=f"p_air_tout_{i}")
+                            p['extra_info']['air_mdot'] = air_r1c3.text_input("Air ṁ", value=p.get('extra_info', {}).get('air_mdot', ''), key=f"p_air_mdot_{i}")
+                            p['extra_info']['air_cp'] = air_r1c4.text_input("Air cp", value=p.get('extra_info', {}).get('air_cp', ''), key=f"p_air_cp_{i}")
+                            
+                            # Additional properties
+                            extra_r1c1, extra_r1c2, extra_r1c3 = st.columns([1, 1, 1])
+                            p['extra_info']['water_content_in'] = extra_r1c1.text_input("Water Content In", value=p.get('extra_info', {}).get('water_content_in', ''), key=f"p_water_in_{i}")
+                            p['extra_info']['water_content_out'] = extra_r1c2.text_input("Water Content Out", value=p.get('extra_info', {}).get('water_content_out', ''), key=f"p_water_out_{i}")
+                            p['extra_info']['density'] = extra_r1c3.text_input("Density", value=p.get('extra_info', {}).get('density', ''), key=f"p_density_{i}")
+                            
+                            extra_r2c1 = st.columns([1])[0]
+                            p['extra_info']['pressure'] = extra_r2c1.text_input("Pressure", value=p.get('extra_info', {}).get('pressure', ''), key=f"p_pressure_{i}")
+                            
+                            # Custom notes field (full width)
+                            p['extra_info']['notes'] = st.text_area("Notes", value=p.get('extra_info', {}).get('notes', ''), key=f"p_notes_{i}", height=80)
 
-                        r2c1,r2c2,r2c3 = st.columns([1,1,3])
-                        p['lat'] = r2c1.text_input("Latitude", value=str(p.get('lat') or ''), key=f"p_lat_{i}")
-                        p['lon'] = r2c2.text_input("Longitude", value=str(p.get('lon') or ''), key=f"p_lon_{i}")
                         # Multi-select for next processes (exclude self)
                         all_procs = st.session_state['processes']
                         if len(all_procs) <= 1:
-                            with r2c3:
-                                st.caption("To connect processes, add more than one")
-                                p['next'] = ''
+                            st.caption("To connect processes, add more than one")
+                            p['next'] = ''
                         else:
                             # Build option list of other subprocess names
                             options = []
@@ -455,7 +866,7 @@ with left:
                             current_tokens = [t.strip() for t in (p.get('next','') or '').replace(';',',').replace('|',',').split(',') if t.strip()]
                             # Keep only those present in options
                             preselect = [t for t in current_tokens if t in options]
-                            selected = r2c3.multiselect("Next processes", options=options, default=preselect, key=f"p_next_multi_{i}")
+                            selected = st.multiselect("Next processes", options=options, default=preselect, key=f"p_next_multi_{i}")
                             # Store as comma-separated names
                             p['next'] = ", ".join(selected)
 
@@ -533,10 +944,14 @@ with right:
             st.session_state['current_base'] = _map_base
         st.markdown("""
 <style>
-/* Compact selectboxes */
-div[data-testid=\"stVerticalBlock\"] > div div[data-baseweb=\"select\"] {min-height:32px;}
-div[data-testid=\"stVerticalBlock\"] > div div[data-baseweb=\"select\"] * {font-size:11px;}
-div[data-testid=\"stVerticalBlock\"] > div div[data-baseweb=\"select\"] div[role=\"combobox\"] {padding:2px 6px;}
+/* Compact selectboxes and all form elements */
+div[data-testid=\"stVerticalBlock\"] > div div[data-baseweb=\"select\"] {min-height:28px !important;}
+div[data-testid=\"stVerticalBlock\"] > div div[data-baseweb=\"select\"] * {font-size:10px !important;}
+div[data-testid=\"stVerticalBlock\"] > div div[data-baseweb=\"select\"] div[role=\"combobox\"] {padding:1px 4px !important;}
+/* Make all inputs more compact */
+.stTextInput > div > div > input {height: 28px !important;}
+.stNumberInput > div > div > input {height: 28px !important;}
+.stSlider > div > div > div {height: 20px !important;}
 </style>
 """, unsafe_allow_html=True)
         selected_base = st.session_state.get('current_base', 'OpenStreetMap')
@@ -581,9 +996,28 @@ div.leaflet-container {background: #f2f2f3 !important;}
             # Feature groups for overlays
             process_fg = folium.FeatureGroup(name='Processes', show=True)
             connection_fg = folium.FeatureGroup(name='Connections', show=True)
+            
+            # Add subprocess markers (only when parent group is expanded)
+            proc_groups = st.session_state.get('proc_groups', [])
+            group_expanded = st.session_state.get('proc_group_expanded', [])
+            
+            # Create mapping of subprocess index to group index
+            subprocess_to_group_folium = {}
+            for group_idx, group_subprocess_list in enumerate(proc_groups):
+                for subprocess_idx in group_subprocess_list:
+                    subprocess_to_group_folium[subprocess_idx] = group_idx
+            
             for idx, p in enumerate(st.session_state['processes']):
                 lat = p.get('lat'); lon = p.get('lon')
                 if lat not in (None, "") and lon not in (None, ""):
+                    # Check if this subprocess's parent group is expanded
+                    parent_group_idx = subprocess_to_group_folium.get(idx)
+                    if parent_group_idx is not None:
+                        # Only show subprocess if parent group is expanded
+                        if (parent_group_idx >= len(group_expanded) or 
+                            not group_expanded[parent_group_idx]):
+                            continue  # Skip this subprocess - parent group is collapsed
+                    
                     try:
                         label = p.get('name') or f"P{idx+1}"
                         html = f"""<div style='background:#e0f2ff;border:2px solid #1769aa;padding:5px 10px;font-size:15px;font-weight:600;color:#0a3555;border-radius:6px;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,0.35);'>📦 {label}</div>"""
@@ -595,6 +1029,81 @@ div.leaflet-container {background: #f2f2f3 !important;}
                         ).add_to(process_fg)
                     except (ValueError, TypeError):
                         pass
+            
+            # Add main process (group) markers (only when collapsed)
+            group_coords = st.session_state.get('proc_group_coordinates', {})
+            group_names = st.session_state.get('proc_group_names', [])
+            for group_idx, coords_data in group_coords.items():
+                # Convert group_idx to int if it's a string (happens after JSON load)
+                group_idx = int(group_idx) if isinstance(group_idx, str) else group_idx
+                if group_idx < len(group_names):
+                    # Only show main process marker when group is collapsed
+                    if (group_idx < len(group_expanded) and group_expanded[group_idx]):
+                        continue  # Skip - group is expanded
+                        
+                    lat = coords_data.get('lat')
+                    lon = coords_data.get('lon')
+                    if lat is not None and lon is not None:
+                        try:
+                            group_name = group_names[group_idx]
+                            
+                            # Build detailed popup with subprocess information
+                            popup_html = f"<div style='min-width:250px;'><b style='font-size:16px;'>🏭 Process: {group_name}</b><br><br>"
+                            
+                            # Get all subprocesses in this group
+                            group_subprocess_list = proc_groups[group_idx] if group_idx < len(proc_groups) else []
+                            
+                            if group_subprocess_list:
+                                popup_html += f"<b>Subprocesses ({len(group_subprocess_list)}):</b><br>"
+                                popup_html += "<div style='max-height:300px;overflow-y:auto;'>"
+                                
+                                for subprocess_idx in group_subprocess_list:
+                                    if subprocess_idx < len(st.session_state['processes']):
+                                        subprocess = st.session_state['processes'][subprocess_idx]
+                                        subprocess_name = subprocess.get('name') or f"Subprocess {subprocess_idx+1}"
+                                        
+                                        popup_html += f"<div style='margin:8px 0;padding:6px;background:#f0f0f0;border-radius:4px;'>"
+                                        popup_html += f"<b>📦 {subprocess_name}</b><br>"
+                                        
+                                        # Add location if available
+                                        sub_lat = subprocess.get('lat')
+                                        sub_lon = subprocess.get('lon')
+                                        if sub_lat and sub_lon:
+                                            popup_html += f"<small>Location: ({sub_lat}, {sub_lon})</small><br>"
+                                        
+                                        # Add next connection if available
+                                        next_val = subprocess.get('next', '')
+                                        if next_val:
+                                            popup_html += f"<small>Next: {next_val}</small><br>"
+                                        
+                                        # Add streams information
+                                        streams = subprocess.get('streams', [])
+                                        if streams:
+                                            popup_html += f"<small><b>Streams ({len(streams)}):</b></small><br>"
+                                            for s_idx, stream in enumerate(streams):
+                                                tin = stream.get('temp_in', '?')
+                                                tout = stream.get('temp_out', '?')
+                                                mdot = stream.get('mdot', '?')
+                                                cp = stream.get('cp', '?')
+                                                popup_html += f"<small>&nbsp;&nbsp;• Stream {s_idx+1}: Tin={tin}°C, Tout={tout}°C, ṁ={mdot}, cp={cp}</small><br>"
+                                        
+                                        popup_html += "</div>"
+                                
+                                popup_html += "</div>"
+                            else:
+                                popup_html += "<i>No subprocesses yet</i><br>"
+                            
+                            popup_html += "</div>"
+                            
+                            html = f"""<div style='background:#c8f7c5;border:2px solid #228b22;padding:6px 12px;font-size:16px;font-weight:700;color:#006400;border-radius:6px;white-space:nowrap;box-shadow:0 2px 4px rgba(0,0,0,0.4);'>🏭 {group_name}</div>"""
+                            folium.Marker(
+                                [float(lat), float(lon)],
+                                tooltip=group_name,
+                                popup=folium.Popup(popup_html, max_width=400),
+                                icon=folium.DivIcon(html=html)
+                            ).add_to(process_fg)
+                        except (ValueError, TypeError):
+                            pass
             name_lookup = {}
             coord_by_idx = {}
             for idx, p in enumerate(st.session_state['processes']):
@@ -657,6 +1166,12 @@ div.leaflet-container {background: #f2f2f3 !important;}
                 returned_objects=["center","zoom","last_clicked"],
                 use_container_width=False
             )
+            
+            # Store current live map state for potential snapshot capture
+            if fmap_data and fmap_data.get('center') and fmap_data.get('zoom'):
+                st.session_state['current_map_center'] = [fmap_data['center']['lat'], fmap_data['center']['lng']]
+                st.session_state['current_map_zoom'] = fmap_data['zoom']
+            
             if (
                 st.session_state.get('placing_process_idx') is not None and
                 fmap_data and fmap_data.get('last_clicked')
@@ -681,7 +1196,7 @@ div.leaflet-container {background: #f2f2f3 !important;}
         else:
             # In Analyze mode on right column proceed with snapshot tools below
             # --- Top action/status bar ---
-            top_c1, top_c2, top_c3, top_c4 = st.columns([3,2,2,2])
+            top_c1, top_c2, top_c3, top_c4, top_c5, top_c6 = st.columns([3,1.5,1,1,1,2])
             with top_c1:
                 # Decide dynamic status message (priority: placing > measuring > last action > default)
                 placing_idx = st.session_state.get('placing_process_idx')
@@ -690,9 +1205,17 @@ div.leaflet-container {background: #f2f2f3 !important;}
                 measure_points = st.session_state.get('measure_points', [])
                 dist_val = st.session_state.get('measure_distance_m')
                 last_msg = st.session_state.get('ui_status_msg')
-                if placing_mode and placing_idx is not None and 0 <= placing_idx < len(st.session_state.get('processes', [])):
-                    pname = st.session_state['processes'][placing_idx].get('name') or f"P{placing_idx+1}"
-                    st.info(f"Placing subprocess: {pname} (Double click on map)")
+                if placing_mode and placing_idx is not None:
+                    if isinstance(placing_idx, str) and placing_idx.startswith('group_'):
+                        # Group placement
+                        group_idx = int(placing_idx.split('_')[1])
+                        if group_idx < len(st.session_state.get('proc_group_names', [])):
+                            group_name = st.session_state['proc_group_names'][group_idx]
+                            st.info(f"📍 Placing Process: {group_name} → Click anywhere on the map to place the process rectangle")
+                    elif isinstance(placing_idx, int) and 0 <= placing_idx < len(st.session_state.get('processes', [])):
+                        # Subprocess placement
+                        pname = st.session_state['processes'][placing_idx].get('name') or f"Subprocess {placing_idx+1}"
+                        st.info(f"📍 Placing: {pname} → Click anywhere on the map to place the process rectangle")
                 elif measure_mode:
                     if dist_val is not None:
                         st.success(f"Distance: {dist_val:.2f} m ({dist_val/1000:.3f} km)")
@@ -714,9 +1237,84 @@ div.leaflet-container {background: #f2f2f3 !important;}
                         st.session_state['measure_points'] = []
                         st.session_state['measure_distance_m'] = None
             with top_c3:
-                st.empty()  # spacer
+                # Export button
+                csv_data = export_to_csv()
+                st.download_button(
+                    label="Export",
+                    data=csv_data,
+                    file_name=f"heat_integration_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    mime="text/csv",
+                    key="export_csv",
+                    help="Export process data to CSV"
+                )
             with top_c4:
-                st.markdown("<div style='font-size:12px; font-weight:600; margin-bottom:0px;'>Base</div>", unsafe_allow_html=True)
+                # Save button - downloads directly
+                state_json = save_app_state()
+                st.download_button(
+                    label="Save",
+                    data=state_json,
+                    file_name=f"heat_integration_state_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                    mime="application/json",
+                    key="download_state",
+                    help="Download current state"
+                )
+            with top_c5:
+                # Check if we just loaded a file - show success message or buttons
+                if 'state_just_loaded' in st.session_state and st.session_state['state_just_loaded']:
+                    if st.button("Load Another", key="btn_load_another", help="Load another file"):
+                        st.session_state['state_just_loaded'] = False
+                        st.rerun()
+                else:
+                    # Load button - compact file uploader
+                    st.markdown("""
+                        <style>
+                        [data-testid="stFileUploader"] {
+                            width: max-content;
+                            margin-top: -1px;
+                        }
+                        [data-testid="stFileUploader"] section {
+                            padding: 0;
+                        }
+                        [data-testid="stFileUploader"] section > input + div {
+                            display: none;
+                        }
+                        [data-testid="stFileUploader"] section + div {
+                            display: none;
+                        }
+                        [data-testid="stFileUploader"] label {
+                            display: none !important;
+                        }
+                        [data-testid="stFileUploader"] button {
+                            width: 100%;
+                        }
+                        [data-testid="stFileUploader"] button span {
+                            font-size: 0;
+                        }
+                        [data-testid="stFileUploader"] button span::before {
+                            content: "Load saved file";
+                            font-size: 14px;
+                        }
+                        </style>
+                    """, unsafe_allow_html=True)
+                    
+                    uploaded_file = st.file_uploader("Load file", type=['json'], key="upload_state", label_visibility="collapsed")
+                    
+                    if uploaded_file is not None:
+                        try:
+                            # Read the file immediately to avoid session state issues
+                            file_contents = uploaded_file.getvalue().decode('utf-8')
+                            success, message = load_app_state(file_contents)
+                            if success:
+                                st.session_state['state_just_loaded'] = True
+                                # Clear the file uploader to prevent MediaFileStorageError
+                                if 'upload_state' in st.session_state:
+                                    del st.session_state['upload_state']
+                                st.rerun()
+                            else:
+                                st.error(message)
+                        except Exception as e:
+                            st.error(f"Error loading file: {str(e)}")
+            with top_c6:
                 analyze_options = ["OpenStreetMap", "Positron", "Satellite", "Blank"]
                 if st.session_state['current_base'] not in analyze_options:
                     st.session_state['current_base'] = 'OpenStreetMap'
@@ -750,23 +1348,185 @@ div.leaflet-container {background: #f2f2f3 !important;}
 
                 # --- Overlay subprocess boxes & connecting arrows on snapshot ---
                 draw = ImageDraw.Draw(base_img)
-                # Larger font for better readability
-                BOX_FONT_SIZE = 20
+                # Smaller font for more compact display
+                BOX_FONT_SIZE = 20  # Smaller but still sharp text
                 try:
-                    font = ImageFont.truetype("DejaVuSans.ttf", BOX_FONT_SIZE)
+                    font = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", BOX_FONT_SIZE)
                 except (OSError, IOError):
                     try:
-                        font = ImageFont.load_default()
+                        font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", BOX_FONT_SIZE)
                     except (OSError, IOError):
-                        font = None
+                        try:
+                            font = ImageFont.truetype("DejaVuSans.ttf", BOX_FONT_SIZE)
+                        except (OSError, IOError):
+                            try:
+                                font = ImageFont.load_default()
+                            except (OSError, IOError):
+                                font = None
 
                 # First pass: compute positions & bounding boxes
                 positioned = []  # list of dicts with: idx,label,center,box,(next_raw)
                 name_index = {}  # map lowercase name -> list of indices (to handle duplicates)
+                
+                # Create mapping of subprocess index to group index
+                subprocess_to_group = {}
+                proc_groups = st.session_state.get('proc_groups', [])
+                for group_idx, group_subprocess_list in enumerate(proc_groups):
+                    for subprocess_idx in group_subprocess_list:
+                        subprocess_to_group[subprocess_idx] = group_idx
+                
+                group_expanded = st.session_state.get('proc_group_expanded', [])
+                
+                # First pass: draw main process rectangles (when collapsed) BEHIND grey overlay
+                group_coords = st.session_state.get('proc_group_coordinates', {})
+                for group_idx, coords_data in group_coords.items():
+                    # Convert group_idx to int if it's a string (happens after JSON load)
+                    group_idx = int(group_idx) if isinstance(group_idx, str) else group_idx
+                    if group_idx < len(st.session_state.get('proc_group_names', [])):
+                        # Only show main process rectangle when group is collapsed
+                        if (group_idx < len(group_expanded) and group_expanded[group_idx]):
+                            continue  # Skip - group is expanded, grey overlay will be shown instead
+                            
+                        lat = coords_data.get('lat')
+                        lon = coords_data.get('lon')
+                        if lat is not None and lon is not None:
+                            try:
+                                lat_f = float(lat)
+                                lon_f = float(lon)
+                                group_px, group_py = snapshot_lonlat_to_pixel(
+                                    lon_f, lat_f,
+                                    (st.session_state['map_center'][1], st.session_state['map_center'][0]),
+                                    st.session_state['map_zoom'],
+                                    w, h
+                                )
+                                # Skip if far outside snapshot bounds
+                                if group_px < -50 or group_py < -20 or group_px > w + 50 or group_py > h + 20:
+                                    continue
+                                    
+                                group_label = st.session_state['proc_group_names'][group_idx]
+                                scale = 1.5  # Slightly larger for main processes
+                                base_padding = 8
+                                padding = int(base_padding * scale)
+                                text_bbox = draw.textbbox((0, 0), group_label, font=font) if font else (0, 0, len(group_label) * 6, 10)
+                                tw = (text_bbox[2] - text_bbox[0])
+                                th = (text_bbox[3] - text_bbox[1])
+                                box_w = int(tw * scale + padding * 2)
+                                box_h = int(th * scale + padding * 2)
+                                x0 = int(group_px - box_w / 2)
+                                y0 = int(group_py - box_h / 2)
+                                x1 = x0 + box_w
+                                y1 = y0 + box_h
+                                if x1 < 0 or y1 < 0 or x0 > w or y0 > h:
+                                    continue
+                                
+                                # Draw main process rectangle with green styling
+                                fill_color = (200, 255, 200, 245)  # Light green
+                                border_color = (34, 139, 34, 255)  # Forest green
+                                text_color = (0, 100, 0, 255)      # Dark green
+                                border_width = 3
+                                
+                                # Draw filled rectangle
+                                draw.rectangle([x0, y0, x1, y1], fill=fill_color, outline=border_color, width=border_width)
+                                # Center text inside box
+                                box_w = x1 - x0
+                                box_h = y1 - y0
+                                if font:
+                                    bbox_lbl = draw.textbbox((0,0), group_label, font=font)
+                                    t_w = bbox_lbl[2]-bbox_lbl[0]
+                                    t_h = bbox_lbl[3]-bbox_lbl[1]
+                                else:
+                                    t_w = len(group_label)*6
+                                    t_h = 10
+                                ct_x = int(x0 + (box_w - t_w)/2)
+                                ct_y = int(y0 + (box_h - t_h)/2)
+                                if font:
+                                    draw.text((ct_x, ct_y), group_label, fill=text_color, font=font)
+                                else:
+                                    draw.text((ct_x, ct_y), group_label, fill=text_color)
+                                    
+                            except (ValueError, TypeError):
+                                continue
+                
+                # Second pass: draw large grey overlays for expanded processes ABOVE main processes
+                for group_idx, coords_data in group_coords.items():
+                    # Convert group_idx to int if it's a string (happens after JSON load)
+                    group_idx = int(group_idx) if isinstance(group_idx, str) else group_idx
+                    # Only draw overlay if process is expanded
+                    if (group_idx < len(group_expanded) and 
+                        group_expanded[group_idx]):
+                        try:
+                            # Always use fixed size overlay centered in screen
+                            # Fixed size: 90% width, 90% height
+                            overlay_w = int(w * 0.9)
+                            overlay_h = int(h * 0.9)
+                            
+                            # Always center in the middle of the screen
+                            center_px = w // 2
+                            center_py = h // 2
+                            
+                            overlay_x0 = int(center_px - overlay_w / 2)
+                            overlay_y0 = int(center_py - overlay_h / 2)
+                            overlay_x1 = overlay_x0 + overlay_w
+                            overlay_y1 = overlay_y0 + overlay_h
+                            
+                            # Ensure overlay stays within map bounds with some padding
+                            margin = 20
+                            overlay_x0 = max(margin, overlay_x0)
+                            overlay_y0 = max(margin, overlay_y0)
+                            overlay_x1 = min(w - margin, overlay_x1)
+                            overlay_y1 = min(h - margin, overlay_y1)
+                            
+                            # Draw very light grey semi-transparent overlay
+                            draw.rectangle([overlay_x0, overlay_y0, overlay_x1, overlay_y1], 
+                                         fill=(250, 250, 250, 40),  # Almost white with very low opacity
+                                         outline=(245, 245, 245, 80), 
+                                         width=1)
+                                         
+                            # Optional: Add a subtle label in the corner
+                            if group_idx < len(st.session_state.get('proc_group_names', [])):
+                                group_name = st.session_state['proc_group_names'][group_idx]
+                                overlay_label = f"Process Area: {group_name}"
+                                if font:
+                                    label_bbox = draw.textbbox((0, 0), overlay_label, font=font)
+                                    label_w = label_bbox[2] - label_bbox[0]
+                                    label_h = label_bbox[3] - label_bbox[1]
+                                else:
+                                    label_w = len(overlay_label) * 6
+                                    label_h = 10
+                                
+                                # Place label in top-left corner of overlay with padding
+                                label_x = overlay_x0 + 15
+                                label_y = overlay_y0 + 15
+                                
+                                # Very subtle background for label
+                                draw.rectangle([label_x-5, label_y-3, label_x+label_w+5, label_y+label_h+3], 
+                                             fill=(255, 255, 255, 120), 
+                                             outline=(220, 220, 220, 100), 
+                                             width=1)
+                                
+                                # Draw label text in subtle grey
+                                if font:
+                                    draw.text((label_x, label_y), overlay_label, fill=(40, 40, 40, 255), font=font)
+                                else:
+                                    draw.text((label_x, label_y), overlay_label, fill=(40, 40, 40, 255))
+                                    
+                        except (ValueError, TypeError):
+                            continue
+                
+                # Third pass: draw subprocesses ABOVE grey overlay (only for expanded groups)
                 for i, p in enumerate(st.session_state['processes']):
                     lat = p.get('lat'); lon = p.get('lon')
                     if lat in (None, "", "None") or lon in (None, "", "None"):
                         continue
+                    
+                    # Check if this subprocess's parent group is expanded
+                    parent_group_idx = subprocess_to_group.get(i)
+                    if parent_group_idx is not None:
+                        # Only show subprocess if parent group is expanded
+                        if (parent_group_idx >= len(group_expanded) or 
+                            not group_expanded[parent_group_idx]):
+                            continue  # Skip this subprocess - parent group is collapsed
+                    
                     try:
                         lat_f = float(lat); lon_f = float(lon)
                         proc_px, proc_py = snapshot_lonlat_to_pixel(
@@ -781,8 +1541,8 @@ div.leaflet-container {background: #f2f2f3 !important;}
                         if proc_px < -50 or proc_py < -20 or proc_px > w + 50 or proc_py > h + 20:
                             continue
                         label = p.get('name') or f"P{i+1}"
-                        scale = float(p.get('box_scale', 1.0) or 1.0)
-                        base_padding = 6
+                        scale = float(p.get('box_scale', 6.0) or 6.0)
+                        base_padding = 18
                         padding = int(base_padding * scale)
                         text_bbox = draw.textbbox((0, 0), label, font=font) if font else (0, 0, len(label) * 6, 10)
                         tw = (text_bbox[2] - text_bbox[0])
@@ -800,7 +1560,8 @@ div.leaflet-container {background: #f2f2f3 !important;}
                             'label': label,
                             'center': (proc_px, proc_py),
                             'box': (x0, y0, x1, y1),
-                            'next_raw': p.get('next', '') or ''
+                            'next_raw': p.get('next', '') or '',
+                            'type': 'subprocess'
                         })
                         lname = label.strip().lower()
                         name_index.setdefault(lname, []).append(len(positioned) - 1)
@@ -810,7 +1571,11 @@ div.leaflet-container {background: #f2f2f3 !important;}
                 # Helper: draw arrow with head
                 def _draw_arrow(draw_ctx, x_start, y_start, x_end, y_end, color=(0, 0, 0, 255), width=3, head_len=18, head_angle_deg=30):
                     import math
-                    draw_ctx.line([(x_start, y_start), (x_end, y_end)], fill=color, width=width)
+                    from PIL import ImageDraw
+                    
+                    # Use PIL's line drawing with proper width for smooth diagonal lines
+                    draw_ctx.line([(x_start, y_start), (x_end, y_end)], fill=color, width=width, joint='curve')
+                    
                     ang = math.atan2(y_end - y_start, x_end - x_start)
                     ang_left = ang - math.radians(head_angle_deg)
                     ang_right = ang + math.radians(head_angle_deg)
@@ -892,23 +1657,40 @@ div.leaflet-container {background: #f2f2f3 !important;}
                             start_y = sy + vec_dy * t_s * 1.02
                             end_x = tx - vec_dx * t_t * 1.02
                             end_y = ty - vec_dy * t_t * 1.02
-                            _draw_arrow(draw, start_x, start_y, end_x, end_y, color=(0, 0, 0, 245), width=3)
+                            _draw_arrow(draw, start_x, start_y, end_x, end_y, color=(0, 0, 0, 245), width=5)
 
                 # Third pass: draw boxes & labels on top
                 for item in positioned:
                     x0, y0, x1, y1 = item['box']
                     label = item['label']
+                    item_type = item.get('type', 'subprocess')
                     padding = 6
+                    
                     # Retrieve scale from subprocess for consistent font positioning relative to new box
                     proc_scale = 1.0
-                    try:
-                        proc_scale = float(st.session_state['processes'][item['idx']].get('box_scale',1.0) or 1.0)
-                    except (ValueError, TypeError):
-                        proc_scale = 1.0
+                    if item_type == 'subprocess':
+                        try:
+                            proc_scale = float(st.session_state['processes'][item['idx']].get('box_scale',4.0) or 4.0)
+                        except (ValueError, TypeError, KeyError):
+                            proc_scale = 1.0
                     padding = int(6 * proc_scale)
-                    # Filled box
-                    # Light blue fill, darker blue border
-                    draw.rectangle([x0, y0, x1, y1], fill=(224, 242, 255, 245), outline=(23, 105, 170, 255), width=2)
+                    
+                    # Different colors for processes vs subprocesses
+                    if item_type == 'process':
+                        # Main process: Green fill with dark green border
+                        fill_color = (200, 255, 200, 245)  # Light green
+                        border_color = (34, 139, 34, 255)  # Forest green
+                        text_color = (0, 100, 0, 255)      # Dark green
+                        border_width = 3
+                    else:
+                        # Subprocess: Light blue fill with dark blue border (original)
+                        fill_color = (224, 242, 255, 245)
+                        border_color = (23, 105, 170, 255)
+                        text_color = (10, 53, 85, 255)
+                        border_width = 2
+                    
+                    # Draw filled rectangle
+                    draw.rectangle([x0, y0, x1, y1], fill=fill_color, outline=border_color, width=border_width)
                     # Center text inside box
                     box_w = x1 - x0
                     box_h = y1 - y0
@@ -922,9 +1704,9 @@ div.leaflet-container {background: #f2f2f3 !important;}
                     ct_x = int(x0 + (box_w - t_w)/2)
                     ct_y = int(y0 + (box_h - t_h)/2)
                     if font:
-                        draw.text((ct_x, ct_y), label, fill=(10, 53, 85, 255), font=font)
+                        draw.text((ct_x, ct_y), label, fill=text_color, font=font)
                     else:
-                        draw.text((ct_x, ct_y), label, fill=(10, 53, 85, 255))
+                        draw.text((ct_x, ct_y), label, fill=text_color)
 
                 # Fourth pass: vertical stream arrows (Tin above box entering, Tout below leaving)
                 # Color rule: if Tin > Tout -> red (cooling stream), else blue (heating stream). Unknown -> gray.
@@ -970,6 +1752,10 @@ div.leaflet-container {background: #f2f2f3 !important;}
                         draw.text((text_xc, text_yc), text_str, fill=(0,0,0,255))
 
                 for item in positioned:
+                    # Only draw streams for subprocesses, not main processes
+                    if item.get('type') != 'subprocess':
+                        continue
+                        
                     proc_idx = item['idx']
                     proc = st.session_state['processes'][proc_idx]
                     streams = proc.get('streams', []) or []
@@ -1032,18 +1818,40 @@ div.leaflet-container {background: #f2f2f3 !important;}
                         bot_text = "  |  ".join(bot_components)
                         _label_centered(top_text, sx, inbound_top - 6, above=True)
                         _label_centered(bot_text, sx, outbound_bottom + 6, above=False)
+                
                 # Present snapshot full width (base selector moved to top bar)
                 img = base_img  # for coordinate capture
                 coords = streamlit_image_coordinates(img, key="meas_img", width=w)
                 if st.session_state['placement_mode'] and coords is not None and st.session_state.get('placing_process_idx') is not None:
                     x_px, y_px = coords['x'], coords['y']
                     lon_new, lat_new = snapshot_pixel_to_lonlat(x_px, y_px, st.session_state['map_center'][::-1], st.session_state['map_zoom'], w, h)
+                    placing_idx = st.session_state['placing_process_idx']
+                    
                     try:
-                        pidx = st.session_state['placing_process_idx']
-                        st.session_state['processes'][pidx]['lat'] = round(lat_new, 6)
-                        st.session_state['processes'][pidx]['lon'] = round(lon_new, 6)
-                        st.success(f"Set subprocess coords to ({lat_new:.6f}, {lon_new:.6f})")
-                    except (ValueError, TypeError):
+                        if isinstance(placing_idx, str) and placing_idx.startswith('group_'):
+                            # Group placement
+                            group_idx = int(placing_idx.split('_')[1])
+                            group_name = st.session_state['proc_group_names'][group_idx]
+                            st.session_state['proc_group_coordinates'][group_idx] = {
+                                'lat': round(lat_new, 6),
+                                'lon': round(lon_new, 6)
+                            }
+                            st.session_state['ui_status_msg'] = f"✅ Process {group_name} placed at ({lat_new:.6f}, {lon_new:.6f})"
+                            # Auto-disable placement mode after successful placement
+                            st.session_state['placement_mode'] = False
+                            st.session_state['placing_process_idx'] = None
+                            st.rerun()
+                        elif isinstance(placing_idx, int):
+                            # Subprocess placement
+                            process_name = st.session_state['processes'][placing_idx].get('name') or f"Subprocess {placing_idx+1}"
+                            st.session_state['processes'][placing_idx]['lat'] = round(lat_new, 6)
+                            st.session_state['processes'][placing_idx]['lon'] = round(lon_new, 6)
+                            st.session_state['ui_status_msg'] = f"✅ {process_name} placed at ({lat_new:.6f}, {lon_new:.6f})"
+                            # Auto-disable placement mode after successful placement
+                            st.session_state['placement_mode'] = False
+                            st.session_state['placing_process_idx'] = None
+                            st.rerun()
+                    except (ValueError, TypeError, IndexError):
                         st.error("Failed to set coordinates")
                 if st.session_state['measure_mode']:
                     if coords is not None and len(st.session_state['measure_points']) < 2:
@@ -1069,5 +1877,73 @@ div.leaflet-container {background: #f2f2f3 !important;}
                 else:
                     # clear stored distance if points < 2
                     st.session_state['measure_distance_m'] = None
+                
+                # Add Process Info Panel below the map (collapsed processes)
+                st.markdown("---")
+                st.markdown("**📋 Process Information**")
+                
+                # Show info for collapsed processes
+                group_coords = st.session_state.get('proc_group_coordinates', {})
+                group_names = st.session_state.get('proc_group_names', [])
+                proc_groups = st.session_state.get('proc_groups', [])
+                group_expanded = st.session_state.get('proc_group_expanded', [])
+                
+                collapsed_processes = []
+                for group_idx, coords_data in group_coords.items():
+                    group_idx = int(group_idx) if isinstance(group_idx, str) else group_idx
+                    # Only show info for collapsed processes
+                    if group_idx < len(group_expanded) and not group_expanded[group_idx]:
+                        if group_idx < len(group_names):
+                            collapsed_processes.append(group_idx)
+                
+                if collapsed_processes:
+                    for group_idx in collapsed_processes:
+                        with st.expander(f"🏭 {group_names[group_idx]}", expanded=False):
+                            coords_data = group_coords.get(group_idx, {})
+                            lat = coords_data.get('lat')
+                            lon = coords_data.get('lon')
+                            
+                            if lat and lon:
+                                st.markdown(f"**📍 Location:** ({lat}, {lon})")
+                            
+                            group_subprocess_list = proc_groups[group_idx] if group_idx < len(proc_groups) else []
+                            
+                            if group_subprocess_list:
+                                st.markdown(f"**Subprocesses:** {len(group_subprocess_list)}")
+                                
+                                for subprocess_idx in group_subprocess_list:
+                                    if subprocess_idx < len(st.session_state['processes']):
+                                        subprocess = st.session_state['processes'][subprocess_idx]
+                                        subprocess_name = subprocess.get('name') or f"Subprocess {subprocess_idx+1}"
+                                        
+                                        st.markdown(f"**📦 {subprocess_name}**")
+                                        
+                                        # Location
+                                        sub_lat = subprocess.get('lat')
+                                        sub_lon = subprocess.get('lon')
+                                        if sub_lat and sub_lon:
+                                            st.caption(f"Location: ({sub_lat}, {sub_lon})")
+                                        
+                                        # Next connection
+                                        next_val = subprocess.get('next', '')
+                                        if next_val:
+                                            st.caption(f"Next: {next_val}")
+                                        
+                                        # Streams
+                                        streams = subprocess.get('streams', [])
+                                        if streams:
+                                            st.caption(f"**Streams ({len(streams)}):**")
+                                            for s_idx, stream in enumerate(streams):
+                                                tin = stream.get('temp_in', '?')
+                                                tout = stream.get('temp_out', '?')
+                                                mdot = stream.get('mdot', '?')
+                                                cp = stream.get('cp', '?')
+                                                st.caption(f"  • Stream {s_idx+1}: Tin={tin}°C, Tout={tout}°C, ṁ={mdot}, cp={cp}")
+                                        
+                                        st.markdown("---")
+                            else:
+                                st.info("No subprocesses in this process yet")
+                else:
+                    st.info("No collapsed processes to show. Expand a process to see its details in the editor panel.")
             else:
                 st.warning("Snapshot missing. Unlock and re-capture if needed.")
