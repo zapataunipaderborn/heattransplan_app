@@ -429,129 +429,134 @@ if 'proc_group_coordinates' not in st.session_state: st.session_state['proc_grou
 if 'current_base' not in st.session_state:
     st.session_state['current_base'] = 'OpenStreetMap'
 
-left, right = st.columns([2, 6], gap="small")  # Much smaller left panel, much wider map area
+# Ensure a local mode variable exists for right-column logic
+mode = st.session_state.get('ui_mode_radio', 'Select Map')
 
-with left:
-    # Page selector (icons) to switch between app pages
-    page_options = ["⚡ Energy","🔋 Potential"]
+# Leftmost vertical nav, main left controls, and main right area
+nav_col, left, right = st.columns([0.6, 2, 6], gap="small")
+
+with nav_col:
+    # Vertical page selector on far left
+    page_options = ["⚡ Energy", "🔋 Potential"]
     current_page = st.session_state.get('active_page', 'Energy')
     page_index = 0 if current_page == 'Energy' else 1
-    selected_label = st.radio("Select page", options=page_options, index=page_index, key="page_select", label_visibility="collapsed")
-    # Keep a simple key for logic ('Energy' or 'Potential')
+    selected_label = st.radio("Pages", options=page_options, index=page_index, key="page_select", label_visibility="collapsed")
     st.session_state['active_page'] = selected_label.split(' ', 1)[1]
 
-    # Render the original left-panel controls (page selector added above)
-    # Compact mode buttons side by side
-    mode_current = st.session_state['ui_mode_radio']
-    if mode_current == "Select Map":
-        col_lock = st.columns([1])[0]
-        if col_lock.button("Lock map and analyze", key="btn_lock_analyze"):
-            # Use current live map state instead of stored selector values
-            current_center = st.session_state.get('current_map_center')
-            current_zoom = st.session_state.get('current_map_zoom')
-            
-            # Fallback to selector values if current state not available
-            if current_center is None or current_zoom is None:
-                new_center = st.session_state['selector_center'][:]
-                new_zoom = st.session_state['selector_zoom']
-            else:
-                new_center = current_center[:]
-                new_zoom = current_zoom
+with left:
+    # Only render the original left-panel controls on the main Energy page
+    if st.session_state.get('active_page', 'Energy') == 'Energy':
+        # Compact mode buttons side by side
+        mode_current = st.session_state['ui_mode_radio']
+        if mode_current == "Select Map":
+            col_lock = st.columns([1])[0]
+            if col_lock.button("Lock map and analyze", key="btn_lock_analyze"):
+                # Use current live map state instead of stored selector values
+                current_center = st.session_state.get('current_map_center')
+                current_zoom = st.session_state.get('current_map_zoom')
                 
-            selected_base_now = st.session_state.get('current_base', 'OpenStreetMap')
-            existing_snaps = st.session_state.get('map_snapshots', {})
-            regenerate = (
-                (st.session_state.get('map_snapshot') is None) or
-                (new_center != st.session_state.get('map_center')) or
-                (new_zoom != st.session_state.get('map_zoom')) or
-                (selected_base_now not in existing_snaps)  # ensure chosen base available
-            )
-            st.session_state['map_center'] = new_center
-            st.session_state['map_zoom'] = new_zoom  # Store exact zoom for coordinate calculations
-            if regenerate:
-                try:
-                    snapshots = {}
-                    # Use rounded zoom for tile rendering but keep exact zoom for coordinates
-                    render_zoom = round(float(new_zoom))
-                    for layer_name, template in TILE_TEMPLATES.items():
-                        smap = StaticMap(MAP_WIDTH, MAP_HEIGHT, url_template=template)
-                        try:
-                            marker = CircleMarker((new_center[1], new_center[0]), 'red', 12)
-                            smap.add_marker(marker)
-                        except (RuntimeError, OSError):
-                            pass
-                        # Use rounded zoom instead of truncated to better match Folium view
-                        img_layer = smap.render(zoom=render_zoom)
-                        if img_layer is None:
-                            st.error(f"Failed to render {layer_name} map layer")
-                            continue
-                        buf_l = BytesIO()
-                        img_layer.save(buf_l, format='PNG')
-                        snapshot_data = buf_l.getvalue()
-                        if len(snapshot_data) == 0:
-                            st.error(f"Empty image data for {layer_name}")
-                            continue
-                        snapshots[layer_name] = snapshot_data
-                        st.success(f"Successfully captured {layer_name} ({len(snapshot_data)} bytes)")
-                    st.session_state['map_snapshots'] = snapshots
-                    # Legacy single snapshot retains OSM for backward compatibility
-                    st.session_state['map_snapshot'] = snapshots.get('OpenStreetMap')
-                except RuntimeError as gen_err:
-                    st.session_state['ui_status_msg'] = f"Capture failed: {gen_err}"
-                    st.error(f"Map capture error: {gen_err}")
-                    st.rerun()
-                except Exception as e:
-                    st.session_state['ui_status_msg'] = f"Unexpected error: {e}"
-                    st.error(f"Unexpected map error: {e}")
-                    st.rerun()
-            st.session_state['map_locked'] = True
-            # Freeze analyze base only if user hasn't previously switched in Analyze; preserve separate map selection
-            st.session_state['analyze_base_layer'] = selected_base_now
-            # Keep current_base unchanged; analyze view will use it directly
-            # Do NOT modify base_layer_choice_map here; that belongs to Select Map context
-            st.session_state['ui_mode_radio'] = 'Analyze'
-            if not st.session_state.get('ui_status_msg'):
-                st.session_state['ui_status_msg'] = "Snapshot captured"
-            st.rerun()
-    else:  # Analyze mode
-        col_unlock, col_add = st.columns([1,1])
-        if col_unlock.button("Unlock map and select", key="btn_unlock_select"):
-            # Preserve current locked map position for seamless transition
-            if st.session_state.get('map_center') and st.session_state.get('map_zoom'):
-                st.session_state['selector_center'] = st.session_state['map_center'][:]
-                st.session_state['selector_zoom'] = st.session_state['map_zoom']
-                st.session_state['current_map_center'] = st.session_state['map_center'][:]
-                st.session_state['current_map_zoom'] = st.session_state['map_zoom']
-            
-            st.session_state.update({
-                'ui_mode_radio': 'Select Map',
-                'map_locked': False,
-                'map_snapshot': None,
-                'measure_mode': False,
-                'measure_points': [],
-                'measure_distance_m': None,
-                'placement_mode': False,
-                'placing_process_idx': None,
-                'ui_status_msg': None,
-            })
-            st.rerun()
-        if col_add.button("Add a process", key="btn_add_group_top"):
-            # Ensure processes list exists
-            if 'proc_groups' not in st.session_state:
-                st.session_state['proc_groups'] = []
-            st.session_state['proc_groups'].append([])  # new empty process
-            # Sync process names & expansion
-            if 'proc_group_names' not in st.session_state:
-                st.session_state['proc_group_names'] = []
-            st.session_state['proc_group_names'].append(f"Process {len(st.session_state['proc_groups'])}")
-            if 'proc_group_expanded' not in st.session_state:
-                st.session_state['proc_group_expanded'] = []
-            st.session_state['proc_group_expanded'].append(False)  # Start collapsed by default
-            if 'proc_group_info_expanded' not in st.session_state:
-                st.session_state['proc_group_info_expanded'] = []
-            st.session_state['proc_group_info_expanded'].append(False)  # Start collapsed by default
-            st.session_state['ui_status_msg'] = "Added new empty process"
-            st.rerun()
+                # Fallback to selector values if current state not available
+                if current_center is None or current_zoom is None:
+                    new_center = st.session_state['selector_center'][:]
+                    new_zoom = st.session_state['selector_zoom']
+                else:
+                    new_center = current_center[:]
+                    new_zoom = current_zoom
+                    
+                selected_base_now = st.session_state.get('current_base', 'OpenStreetMap')
+                existing_snaps = st.session_state.get('map_snapshots', {})
+                regenerate = (
+                    (st.session_state.get('map_snapshot') is None) or
+                    (new_center != st.session_state.get('map_center')) or
+                    (new_zoom != st.session_state.get('map_zoom')) or
+                    (selected_base_now not in existing_snaps)  # ensure chosen base available
+                )
+                st.session_state['map_center'] = new_center
+                st.session_state['map_zoom'] = new_zoom  # Store exact zoom for coordinate calculations
+                if regenerate:
+                    try:
+                        snapshots = {}
+                        # Use rounded zoom for tile rendering but keep exact zoom for coordinates
+                        render_zoom = round(float(new_zoom))
+                        for layer_name, template in TILE_TEMPLATES.items():
+                            smap = StaticMap(MAP_WIDTH, MAP_HEIGHT, url_template=template)
+                            try:
+                                marker = CircleMarker((new_center[1], new_center[0]), 'red', 12)
+                                smap.add_marker(marker)
+                            except (RuntimeError, OSError):
+                                pass
+                            # Use rounded zoom instead of truncated to better match Folium view
+                            img_layer = smap.render(zoom=render_zoom)
+                            if img_layer is None:
+                                st.error(f"Failed to render {layer_name} map layer")
+                                continue
+                            buf_l = BytesIO()
+                            img_layer.save(buf_l, format='PNG')
+                            snapshot_data = buf_l.getvalue()
+                            if len(snapshot_data) == 0:
+                                st.error(f"Empty image data for {layer_name}")
+                                continue
+                            snapshots[layer_name] = snapshot_data
+                            st.success(f"Successfully captured {layer_name} ({len(snapshot_data)} bytes)")
+                        st.session_state['map_snapshots'] = snapshots
+                        # Legacy single snapshot retains OSM for backward compatibility
+                        st.session_state['map_snapshot'] = snapshots.get('OpenStreetMap')
+                    except RuntimeError as gen_err:
+                        st.session_state['ui_status_msg'] = f"Capture failed: {gen_err}"
+                        st.error(f"Map capture error: {gen_err}")
+                        st.rerun()
+                    except Exception as e:
+                        st.session_state['ui_status_msg'] = f"Unexpected error: {e}"
+                        st.error(f"Unexpected map error: {e}")
+                        st.rerun()
+                st.session_state['map_locked'] = True
+                # Freeze analyze base only if user hasn't previously switched in Analyze; preserve separate map selection
+                st.session_state['analyze_base_layer'] = selected_base_now
+                # Keep current_base unchanged; analyze view will use it directly
+                # Do NOT modify base_layer_choice_map here; that belongs to Select Map context
+                st.session_state['ui_mode_radio'] = 'Analyze'
+                if not st.session_state.get('ui_status_msg'):
+                    st.session_state['ui_status_msg'] = "Snapshot captured"
+                st.rerun()
+        else:  # Analyze mode
+            col_unlock, col_add = st.columns([1,1])
+            if col_unlock.button("Unlock map and select", key="btn_unlock_select"):
+                # Preserve current locked map position for seamless transition
+                if st.session_state.get('map_center') and st.session_state.get('map_zoom'):
+                    st.session_state['selector_center'] = st.session_state['map_center'][:]
+                    st.session_state['selector_zoom'] = st.session_state['map_zoom']
+                    st.session_state['current_map_center'] = st.session_state['map_center'][:]
+                    st.session_state['current_map_zoom'] = st.session_state['map_zoom']
+                
+                st.session_state.update({
+                    'ui_mode_radio': 'Select Map',
+                    'map_locked': False,
+                    'map_snapshot': None,
+                    'measure_mode': False,
+                    'measure_points': [],
+                    'measure_distance_m': None,
+                    'placement_mode': False,
+                    'placing_process_idx': None,
+                    'ui_status_msg': None,
+                })
+                st.rerun()
+            if col_add.button("Add a process", key="btn_add_group_top"):
+                # Ensure processes list exists
+                if 'proc_groups' not in st.session_state:
+                    st.session_state['proc_groups'] = []
+                st.session_state['proc_groups'].append([])  # new empty process
+                # Sync process names & expansion
+                if 'proc_group_names' not in st.session_state:
+                    st.session_state['proc_group_names'] = []
+                st.session_state['proc_group_names'].append(f"Process {len(st.session_state['proc_groups'])}")
+                if 'proc_group_expanded' not in st.session_state:
+                    st.session_state['proc_group_expanded'] = []
+                st.session_state['proc_group_expanded'].append(False)  # Start collapsed by default
+                if 'proc_group_info_expanded' not in st.session_state:
+                    st.session_state['proc_group_info_expanded'] = []
+                st.session_state['proc_group_info_expanded'].append(False)  # Start collapsed by default
+                st.session_state['ui_status_msg'] = "Added new empty process"
+                st.rerun()
     
     st.markdown("---")
     
