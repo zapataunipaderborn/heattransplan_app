@@ -432,16 +432,37 @@ if 'current_base' not in st.session_state:
 # Ensure a local mode variable exists for right-column logic
 mode = st.session_state.get('ui_mode_radio', 'Select Map')
 
-# Leftmost vertical nav, main left controls, and main right area
-nav_col, left, right = st.columns([0.6, 2, 6], gap="small")
+# Leftmost vertical nav (very narrow), main left controls, and main right area
+# Make nav column much smaller so only the emoji fits and leaves maximal space
+nav_col, left, right = st.columns([0.12, 2, 6], gap="small")
 
 with nav_col:
-    # Vertical page selector on far left
-    page_options = ["⚡ Energy", "🔋 Potential"]
-    current_page = st.session_state.get('active_page', 'Energy')
-    page_index = 0 if current_page == 'Energy' else 1
-    selected_label = st.radio("Pages", options=page_options, index=page_index, key="page_select", label_visibility="collapsed")
-    st.session_state['active_page'] = selected_label.split(' ', 1)[1]
+        # Emoji-only buttons for navigation (no 'Pages' text)
+        # Render vertically: Energy on top, Potential below
+        if st.button("⚡", key="btn_nav_energy", help="Energy page"):
+                st.session_state['active_page'] = 'Energy'
+        if st.button("🔋", key="btn_nav_potential", help="Potential page"):
+                st.session_state['active_page'] = 'Potential'
+
+        # Indicate active page with a small styled marker (centered)
+        active = st.session_state.get('active_page', 'Energy')
+        marker_html = """
+        <style>
+            .nav-marker {font-size:12px; text-align:center; margin-top:6px;}
+            .nav-marker b {color:#0a58ca}
+        </style>
+        <div class='nav-marker'>Current: <b>%s</b></div>
+        """ % (active)
+        st.markdown(marker_html, unsafe_allow_html=True)
+
+        # Tighten nav column spacing via CSS
+        st.markdown("""
+        <style>
+            /* Reduce padding around the nav column */
+            div.block-container {padding-left: 6px !important;}
+            button[role="button"] {font-size:26px !important; padding:4px 6px !important;}
+        </style>
+        """, unsafe_allow_html=True)
 
 with left:
     # Only render the original left-panel controls on the main Energy page
