@@ -19,7 +19,7 @@ from process_utils import (
 )
 import csv
 
-# Helper: convert pixel (relative to center) in snapshot to lon/lat using Web Mercator math
+# Helper: convert pixel relative to center in snapshot to lon/lat using Web Mercator math
 def snapshot_pixel_to_lonlat(px, py, center_ll, z_level, img_w, img_h):
     import math as _math
     def lonlat_to_xy(lon_val, lat_val, z_val):
