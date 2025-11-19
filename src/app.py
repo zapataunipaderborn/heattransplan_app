@@ -397,6 +397,10 @@ if 'map_base_choice' not in st.session_state:
     st.session_state['map_base_choice'] = 'OpenStreetMap'
 if 'analyze_base_choice' not in st.session_state:
     st.session_state['analyze_base_choice'] = 'OpenStreetMap'
+# Active page selector (controls which page is shown)
+if 'active_page' not in st.session_state:
+    # 'Energy' is the main existing page; 'Potential' is the new second page
+    st.session_state['active_page'] = 'Energy'
 # Initialize address input explicitly (prevents KeyError after widget key changes)
 if 'address_input' not in st.session_state:
     st.session_state['address_input'] = ''
@@ -428,6 +432,15 @@ if 'current_base' not in st.session_state:
 left, right = st.columns([2, 6], gap="small")  # Much smaller left panel, much wider map area
 
 with left:
+    # Page selector (icons) to switch between app pages
+    page_options = ["⚡ Energy","🔋 Potential"]
+    current_page = st.session_state.get('active_page', 'Energy')
+    page_index = 0 if current_page == 'Energy' else 1
+    selected_label = st.radio("Select page", options=page_options, index=page_index, key="page_select", label_visibility="collapsed")
+    # Keep a simple key for logic ('Energy' or 'Potential')
+    st.session_state['active_page'] = selected_label.split(' ', 1)[1]
+
+    # Render the original left-panel controls (page selector added above)
     # Compact mode buttons side by side
     mode_current = st.session_state['ui_mode_radio']
     if mode_current == "Select Map":
@@ -915,6 +928,10 @@ with left:
             st.caption("Add processes in Analyze mode after locking a map view.")
 
 with right:
+    # Show simple 'Potential' page when selected, otherwise continue with main UI
+    if st.session_state.get('active_page', 'Energy') == 'Potential':
+        st.markdown("<h1>Potential</h1>", unsafe_allow_html=True)
+        st.stop()
     # mode already selected on left
     if mode == "Select Map":
         # Address & base selection row
