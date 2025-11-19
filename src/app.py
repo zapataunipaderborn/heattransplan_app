@@ -606,7 +606,8 @@ with left:
                 # Top thick separator for group
                 st.markdown("<div style='height:3px; background:#888888; margin:12px 0 6px;'></div>", unsafe_allow_html=True)
                 # Arrow | Name | Place | Count | Delete
-                gh_cols = st.columns([0.05, 0.50, 0.15, 0.12, 0.10])
+                # Add a compact size control next to the group name (before Place)
+                gh_cols = st.columns([0.05, 0.45, 0.18, 0.15, 0.12, 0.05])
                 g_toggle_label = "▾" if st.session_state['proc_group_expanded'][g] else "▸"
                 if gh_cols[0].button(g_toggle_label, key=f"group_toggle_{g}"):
                     st.session_state['proc_group_expanded'][g] = not st.session_state['proc_group_expanded'][g]
@@ -614,11 +615,33 @@ with left:
                 default_name = st.session_state['proc_group_names'][g]
                 new_name = gh_cols[1].text_input("Group name", value=default_name, key=f"group_name_{g}", label_visibility="collapsed", placeholder=f"Group {g+1}")
                 st.session_state['proc_group_names'][g] = new_name.strip() or default_name
+
+                # Ensure proc_group_coordinates entry exists
+                if 'proc_group_coordinates' not in st.session_state:
+                    st.session_state['proc_group_coordinates'] = {}
+                if g not in st.session_state['proc_group_coordinates']:
+                    st.session_state['proc_group_coordinates'][g] = {'lat': '', 'lon': '', 'hours': '', 'box_scale': 1.5}
+
+                # Compact size slider for main process box placed next to name
+                try:
+                    current_group_scale = float(st.session_state['proc_group_coordinates'][g].get('box_scale', 1.5) or 1.5)
+                except (ValueError, TypeError):
+                    current_group_scale = 1.5
+                new_group_scale = gh_cols[2].slider(
+                    "Size",
+                    min_value=0.5,
+                    max_value=3.0,
+                    value=current_group_scale,
+                    step=0.1,
+                    key=f"group_box_scale_{g}",
+                    label_visibility="collapsed"
+                )
+                st.session_state['proc_group_coordinates'][g]['box_scale'] = float(new_group_scale)
                 
                 # Place button for the group/process
                 group_place_active = (st.session_state['placement_mode'] and st.session_state.get('placing_process_idx') == f"group_{g}")
                 if not group_place_active:
-                    if gh_cols[2].button("Place", key=f"place_group_{g}"):
+                    if gh_cols[3].button("Place", key=f"place_group_{g}"):
                         st.session_state['placement_mode'] = True
                         st.session_state['measure_mode'] = False
                         st.session_state['placing_process_idx'] = f"group_{g}"
@@ -626,15 +649,15 @@ with left:
                         st.session_state['ui_status_msg'] = f"Click on map to place: {group_name}"
                         st.rerun()
                 else:
-                    if gh_cols[2].button("Done", key=f"done_place_group_{g}"):
+                    if gh_cols[3].button("Done", key=f"done_place_group_{g}"):
                         st.session_state['placement_mode'] = False
                         st.session_state['placing_process_idx'] = None
                         st.session_state['ui_status_msg'] = "Placement mode disabled"
                         st.rerun()
                 
-                gh_cols[3].markdown(f"**{len(g_list)}**")
+                gh_cols[4].markdown(f"**{len(g_list)}**")
                 pending_group = st.session_state.get('group_delete_pending')
-                with gh_cols[4]:
+                with gh_cols[5]:
                     if pending_group == g:
                         st.write("Sure?")
                         if st.button("✅", key=f"confirm_del_group_{g}"):
@@ -691,6 +714,8 @@ with left:
                     st.session_state['proc_group_coordinates'][g]['lat'] = new_lat if new_lat.strip() else ''
                     st.session_state['proc_group_coordinates'][g]['lon'] = new_lon if new_lon.strip() else ''
                     st.session_state['proc_group_coordinates'][g]['hours'] = new_hours if new_hours.strip() else ''
+
+                    # (Process size control moved to group header for compactness)
                     
                     # Next Processes dropdown for the group
                     if 'proc_group_next' not in st.session_state:
@@ -1391,7 +1416,11 @@ div.leaflet-container {background: #f2f2f3 !important;}
                                     continue
                                     
                                 group_label = st.session_state['proc_group_names'][group_idx]
-                                scale = 1.5  # Slightly larger for main processes
+                                # Allow per-group size via proc_group_coordinates[group_idx]['box_scale']
+                                try:
+                                    scale = float(coords_data.get('box_scale', 1.5) or 1.5)
+                                except (ValueError, TypeError):
+                                    scale = 1.5
                                 base_padding = 8
                                 padding = int(base_padding * scale)
                                 text_bbox = draw.textbbox((0, 0), group_label, font=font) if font else (0, 0, len(group_label) * 6, 10)
