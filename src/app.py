@@ -444,23 +444,25 @@ with nav_col:
         if st.button("🔋", key="btn_nav_potential", help="Potential page"):
                 st.session_state['active_page'] = 'Potential'
 
-        # Indicate active page with a small styled marker (centered)
+        # Tighten nav column spacing and highlight the active emoji button
         active = st.session_state.get('active_page', 'Energy')
-        marker_html = """
-        <style>
-            .nav-marker {font-size:12px; text-align:center; margin-top:6px;}
-            .nav-marker b {color:#0a58ca}
-        </style>
-        <div class='nav-marker'>Current: <b>%s</b></div>
-        """ % (active)
-        st.markdown(marker_html, unsafe_allow_html=True)
+        if active == 'Energy':
+            active_css = '⚡'
+        else:
+            active_css = '🔋'
 
-        # Tighten nav column spacing via CSS
-        st.markdown("""
+        st.markdown(f"""
         <style>
             /* Reduce padding around the nav column */
-            div.block-container {padding-left: 6px !important;}
-            button[role="button"] {font-size:26px !important; padding:4px 6px !important;}
+            div.block-container {{padding-left: 6px !important;}}
+            button[role="button"] {{font-size:26px !important; padding:4px 6px !important;}}
+            /* Highlight the active icon by matching aria-label */
+            button[aria-label="{active_css}"] {{
+                background-color: #0a58ca !important;
+                color: white !important;
+                border-radius: 8px !important;
+                box-shadow: 0 2px 6px rgba(10,88,202,0.25) !important;
+            }}
         </style>
         """, unsafe_allow_html=True)
 
