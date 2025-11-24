@@ -4,7 +4,7 @@ import streamlit as st
 st.set_page_config(
     page_title="Heat Transmission Planning",
     page_icon="🏠",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
 # Home page content
