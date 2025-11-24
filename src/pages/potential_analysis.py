@@ -1,5 +1,19 @@
 import streamlit as st
 
+st.set_page_config(
+    page_title="Potential Analysis",
+    initial_sidebar_state="collapsed"
+)
+
+st.markdown(
+    """
+    <style>
+    section[data-testid="stSidebar"] {width: 180px !important; min-width: 180px !important;}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 st.title("Potential Analysis")
 
 st.markdown(

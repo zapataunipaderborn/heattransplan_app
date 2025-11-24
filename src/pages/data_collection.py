@@ -293,7 +293,20 @@ def export_to_csv():
     return output.getvalue()
 
 
-st.set_page_config(page_title="Energy Data Collection", layout="wide")
+st.set_page_config(
+    page_title="Energy Data Collection",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
+
+st.markdown(
+    """
+    <style>
+    section[data-testid="stSidebar"] {width: 180px !important; min-width: 180px !important;}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 # Compact top padding & utility CSS to keep map tight to top-right
 st.markdown("""
@@ -302,40 +315,6 @@ st.markdown("""
 .block-container {padding-top:0rem; padding-bottom:0.3rem;}
 div[data-testid="column"] > div:has(> div.map-region) {margin-top:0;}
 .map-control-row {margin-bottom:0.25rem;}
-
-/* Make everything smaller by default */
-html, body, .stApp {font-size:13px !important;}
-.stMarkdown p, .stMarkdown span, .stMarkdown li {font-size:13px !important;}
-.stButton button {font-size:12px !important; padding:0.2rem 0.4rem !important;}
-.stTextInput input, .stNumberInput input {font-size:12px !important; padding:0.2rem 0.3rem !important;}
-.stRadio > div[role=radio] label {font-size:12px !impohrtant;}
-.stDataFrame, .stDataFrame table {font-size:11px !important;}
-.stSlider {font-size:11px !important;}
-
-/* Title smaller */
-h1 {font-size: 1.8rem !important; margin-bottom: 0.5rem !important;}
-
-/* Responsive typography & control sizing */
-@media (max-width: 1500px){
-    html, body, .stApp {font-size:12px !important;}
-    .stMarkdown p, .stMarkdown span, .stMarkdown li {font-size:12px !important;}
-    .stButton button {font-size:11px !important; padding:0.2rem 0.4rem !important;}
-    .stTextInput input, .stNumberInput input {font-size:11px !important; padding:0.2rem 0.3rem !important;}
-    .stRadio > div[role=radio] label {font-size:11px !important;}
-}
-@media (max-width: 1200px){
-    html, body, .stApp {font-size:11px !important;}
-    .stMarkdown p, .stMarkdown span, .stMarkdown li {font-size:11px !important;}
-    .stButton button {font-size:10px !important;}
-    .stTextInput input, .stNumberInput input {font-size:10px !important;}
-}
-@media (max-width: 1000px){
-    html, body, .stApp {font-size:10px !important;}
-    .stMarkdown p, .stMarkdown span, .stMarkdown li {font-size:10px !important;}
-    .stButton button {font-size:9px !important; padding:0.15rem 0.35rem !important;}
-    .stTextInput input, .stNumberInput input {font-size:9px !important; padding:0.15rem 0.25rem !important;}
-    .stDataFrame, .stDataFrame table {font-size:9px !important;}
-}
 
 /* Make map & snapshot adapt on narrow screens */
 @media (max-width: 1500px){
