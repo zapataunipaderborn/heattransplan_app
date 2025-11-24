@@ -10,8 +10,15 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    section[data-testid="stSidebar"] {width: 180px !important; min-width: 180px !important;}
-    </style>
+    section[data-testid="stSidebar"][aria-expanded="true"] {
+        width: 180px !important;
+        min-width: 180px !important;
+    }
+    section[data-testid="stSidebar"][aria-expanded="false"] {
+        width: 0 !important;
+        min-width: 0 !important;
+        margin-left: 0 !important;
+    }
     """,
     unsafe_allow_html=True,
 )
