@@ -715,6 +715,122 @@ with left:
 
                     # (Process size control moved to group header for compactness)
                     
+                    # Process Model button and dialog
+                    if 'proc_group_model' not in st.session_state:
+                        st.session_state['proc_group_model'] = {}
+                    if g not in st.session_state['proc_group_model']:
+                        st.session_state['proc_group_model'][g] = {'level1': None, 'level2': None, 'level3': None}
+                    
+                    model_btn_col, model_display_col = st.columns([0.3, 0.7])
+                    if model_btn_col.button("Select Process Model", key=f"open_model_dialog_{g}"):
+                        # Use dialog to show process model selector
+                        @st.dialog("Process Model Selection")
+                        def show_process_model_dialog():
+                            PROCESS_MODEL_DICT = {
+                                "Drying": {
+                                    "Spray drying": ["milk powder", "coffee powder", "egg powder"],
+                                    "Granular drying": ["grain", "sand", "plastic granules"],
+                                    "Tunnel drying": ["fruits", "vegetables", "ceramics"],
+                                    "Contact drying": ["paper", "food", "wood"],
+                                    "Freeze drying": ["coffee extract", "fruit extract"]
+                                },
+                                "Autoclaving": {
+                                    "Sterilization": ["canned food", "medical tools"],
+                                    "Hardening": ["vulcanization of rubber"]
+                                },
+                                "Thermal activation solid products": {
+                                    "Boiling small scale": ["canned food", "vegetables"],
+                                    "Boiling large scale": ["specialty chemicals", "food"]
+                                },
+                                "Thermal activation fluid products": {
+                                    "Continuous bath heating": ["boiling vegetables", "pasteurization"],
+                                    "Continuous heating of fluid": ["alcohol chemical conversion", "milk pasteurization"]
+                                },
+                                "Thermal separation": {
+                                    "Distillation": ["alcohol chemical conversion", "specialty chemicals"],
+                                    "Evaporation": ["fruit juice", "milk"],
+                                    "Shipping": ["sugar syrup"]
+                                }
+                            }
+                            
+                            st.markdown("### Select process category, type, and product")
+                            
+                            # Level 1: Main category
+                            level1_options = ["Select category..."] + list(PROCESS_MODEL_DICT.keys())
+                            current_level1 = st.session_state['proc_group_model'][g].get('level1')
+                            level1_index = level1_options.index(current_level1) if current_level1 in level1_options else 0
+                            
+                            selected_level1 = st.selectbox(
+                                "Category",
+                                options=level1_options,
+                                index=level1_index,
+                                key=f"dialog_model_level1_{g}"
+                            )
+                            
+                            if selected_level1 != "Select category...":
+                                st.session_state['proc_group_model'][g]['level1'] = selected_level1
+                                
+                                # Level 2: Subcategory
+                                level2_options = ["Select type..."] + list(PROCESS_MODEL_DICT[selected_level1].keys())
+                                current_level2 = st.session_state['proc_group_model'][g].get('level2')
+                                if current_level2 and current_level2 not in level2_options:
+                                    st.session_state['proc_group_model'][g]['level2'] = None
+                                    current_level2 = None
+                                level2_index = level2_options.index(current_level2) if current_level2 in level2_options else 0
+                                
+                                selected_level2 = st.selectbox(
+                                    "Type",
+                                    options=level2_options,
+                                    index=level2_index,
+                                    key=f"dialog_model_level2_{g}"
+                                )
+                                
+                                if selected_level2 != "Select type...":
+                                    st.session_state['proc_group_model'][g]['level2'] = selected_level2
+                                    
+                                    # Level 3: Product
+                                    level3_options = ["Select product..."] + PROCESS_MODEL_DICT[selected_level1][selected_level2]
+                                    current_level3 = st.session_state['proc_group_model'][g].get('level3')
+                                    if current_level3 and current_level3 not in level3_options:
+                                        st.session_state['proc_group_model'][g]['level3'] = None
+                                        current_level3 = None
+                                    level3_index = level3_options.index(current_level3) if current_level3 in level3_options else 0
+                                    
+                                    selected_level3 = st.selectbox(
+                                        "Product",
+                                        options=level3_options,
+                                        index=level3_index,
+                                        key=f"dialog_model_level3_{g}"
+                                    )
+                                    
+                                    if selected_level3 != "Select product...":
+                                        st.session_state['proc_group_model'][g]['level3'] = selected_level3
+                                    else:
+                                        st.session_state['proc_group_model'][g]['level3'] = None
+                                else:
+                                    st.session_state['proc_group_model'][g]['level2'] = None
+                                    st.session_state['proc_group_model'][g]['level3'] = None
+                            else:
+                                st.session_state['proc_group_model'][g]['level1'] = None
+                                st.session_state['proc_group_model'][g]['level2'] = None
+                                st.session_state['proc_group_model'][g]['level3'] = None
+                            
+                            if st.button("Done"):
+                                st.rerun()
+                        
+                        show_process_model_dialog()
+                    
+                    # Display current selection
+                    current_model = st.session_state['proc_group_model'][g]
+                    if current_model.get('level3'):
+                        model_display_col.caption(f"Model: {current_model['level1']} → {current_model['level2']} → {current_model['level3']}")
+                    elif current_model.get('level2'):
+                        model_display_col.caption(f"Model: {current_model['level1']} → {current_model['level2']}")
+                    elif current_model.get('level1'):
+                        model_display_col.caption(f"Model: {current_model['level1']}")
+                    else:
+                        model_display_col.caption("No model selected")
+                    
                     # Next Processes dropdown for the group
                     if 'proc_group_next' not in st.session_state:
                         st.session_state['proc_group_next'] = {}
@@ -829,6 +945,121 @@ with left:
                         extra_header_cols[1].markdown("**Information**")
                         
                         if st.session_state['proc_extra_info_expanded'][i]:
+                            # Process Model button and dialog for subprocess
+                            if 'proc_model' not in st.session_state:
+                                st.session_state['proc_model'] = {}
+                            if i not in st.session_state['proc_model']:
+                                st.session_state['proc_model'][i] = {'level1': None, 'level2': None, 'level3': None}
+                            
+                            sub_model_btn_col, sub_model_display_col = st.columns([0.3, 0.7])
+                            if sub_model_btn_col.button("Select Process Model", key=f"open_subprocess_model_dialog_{i}"):
+                                @st.dialog("Subprocess Process Model Selection")
+                                def show_subprocess_model_dialog():
+                                    PROCESS_MODEL_DICT = {
+                                        "Drying": {
+                                            "Spray drying": ["milk powder", "coffee powder", "egg powder"],
+                                            "Granular drying": ["grain", "sand", "plastic granules"],
+                                            "Tunnel drying": ["fruits", "vegetables", "ceramics"],
+                                            "Contact drying": ["paper", "food", "wood"],
+                                            "Freeze drying": ["coffee extract", "fruit extract"]
+                                        },
+                                        "Autoclaving": {
+                                            "Sterilization": ["canned food", "medical tools"],
+                                            "Hardening": ["vulcanization of rubber"]
+                                        },
+                                        "Thermal activation solid products": {
+                                            "Boiling small scale": ["canned food", "vegetables"],
+                                            "Boiling large scale": ["specialty chemicals", "food"]
+                                        },
+                                        "Thermal activation fluid products": {
+                                            "Continuous bath heating": ["boiling vegetables", "pasteurization"],
+                                            "Continuous heating of fluid": ["alcohol chemical conversion", "milk pasteurization"]
+                                        },
+                                        "Thermal separation": {
+                                            "Distillation": ["alcohol chemical conversion", "specialty chemicals"],
+                                            "Evaporation": ["fruit juice", "milk"],
+                                            "Shipping": ["sugar syrup"]
+                                        }
+                                    }
+                                    
+                                    st.markdown("### Select process category, type, and product")
+                                    
+                                    # Level 1: Main category
+                                    level1_options = ["Select category..."] + list(PROCESS_MODEL_DICT.keys())
+                                    current_level1 = st.session_state['proc_model'][i].get('level1')
+                                    level1_index = level1_options.index(current_level1) if current_level1 in level1_options else 0
+                                    
+                                    selected_level1 = st.selectbox(
+                                        "Category",
+                                        options=level1_options,
+                                        index=level1_index,
+                                        key=f"dialog_subprocess_model_level1_{i}"
+                                    )
+                                    
+                                    if selected_level1 != "Select category...":
+                                        st.session_state['proc_model'][i]['level1'] = selected_level1
+                                        
+                                        # Level 2: Subcategory
+                                        level2_options = ["Select type..."] + list(PROCESS_MODEL_DICT[selected_level1].keys())
+                                        current_level2 = st.session_state['proc_model'][i].get('level2')
+                                        if current_level2 and current_level2 not in level2_options:
+                                            st.session_state['proc_model'][i]['level2'] = None
+                                            current_level2 = None
+                                        level2_index = level2_options.index(current_level2) if current_level2 in level2_options else 0
+                                        
+                                        selected_level2 = st.selectbox(
+                                            "Type",
+                                            options=level2_options,
+                                            index=level2_index,
+                                            key=f"dialog_subprocess_model_level2_{i}"
+                                        )
+                                        
+                                        if selected_level2 != "Select type...":
+                                            st.session_state['proc_model'][i]['level2'] = selected_level2
+                                            
+                                            # Level 3: Product
+                                            level3_options = ["Select product..."] + PROCESS_MODEL_DICT[selected_level1][selected_level2]
+                                            current_level3 = st.session_state['proc_model'][i].get('level3')
+                                            if current_level3 and current_level3 not in level3_options:
+                                                st.session_state['proc_model'][i]['level3'] = None
+                                                current_level3 = None
+                                            level3_index = level3_options.index(current_level3) if current_level3 in level3_options else 0
+                                            
+                                            selected_level3 = st.selectbox(
+                                                "Product",
+                                                options=level3_options,
+                                                index=level3_index,
+                                                key=f"dialog_subprocess_model_level3_{i}"
+                                            )
+                                            
+                                            if selected_level3 != "Select product...":
+                                                st.session_state['proc_model'][i]['level3'] = selected_level3
+                                            else:
+                                                st.session_state['proc_model'][i]['level3'] = None
+                                        else:
+                                            st.session_state['proc_model'][i]['level2'] = None
+                                            st.session_state['proc_model'][i]['level3'] = None
+                                    else:
+                                        st.session_state['proc_model'][i]['level1'] = None
+                                        st.session_state['proc_model'][i]['level2'] = None
+                                        st.session_state['proc_model'][i]['level3'] = None
+                                    
+                                    if st.button("Done"):
+                                        st.rerun()
+                                
+                                show_subprocess_model_dialog()
+                            
+                            # Display current selection
+                            current_model = st.session_state['proc_model'][i]
+                            if current_model.get('level3'):
+                                sub_model_display_col.caption(f"Model: {current_model['level1']} → {current_model['level2']} → {current_model['level3']}")
+                            elif current_model.get('level2'):
+                                sub_model_display_col.caption(f"Model: {current_model['level1']} → {current_model['level2']}")
+                            elif current_model.get('level1'):
+                                sub_model_display_col.caption(f"Model: {current_model['level1']}")
+                            else:
+                                sub_model_display_col.caption("No model selected")
+                            
                             # Product information
                             r1c1,r1c2,r1c3,r1c4 = st.columns([1,1,1,1])
                             p['conntemp'] = r1c1.text_input("Product Tin", value=p.get('conntemp',''), key=f"p_conntemp_{i}")
