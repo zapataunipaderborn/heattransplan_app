@@ -5,9 +5,13 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+# Apply styles immediately to prevent flash
 st.markdown(
     """
     <style>
+    :root {
+        font-size: 11px !important;
+    }
     section[data-testid="stSidebar"][aria-expanded="true"] {
         width: 180px !important;
         min-width: 180px !important;
@@ -18,8 +22,8 @@ st.markdown(
         margin-left: 0 !important;
     }
     
-    /* Smaller fonts and elements */
-    html, body, .stApp {font-size:11px !important;}
+    /* Smaller fonts and elements - apply to all elements */
+    html, body, .stApp, * {font-size:11px !important;}
     .stMarkdown p, .stMarkdown span, .stMarkdown li {font-size:11px !important;}
     .stButton button {font-size:10px !important; padding:0.1rem 0.3rem !important;}
     .stTextInput input, .stNumberInput input {font-size:10px !important; padding:0.1rem 0.2rem !important;}
