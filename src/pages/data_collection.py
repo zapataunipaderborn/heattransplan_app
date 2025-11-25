@@ -794,8 +794,60 @@ with left:
                                 st.session_state['proc_group_model'][g]['level2'] = None
                                 st.session_state['proc_group_model'][g]['level3'] = None
                             
-                            if st.button("Done"):
-                                st.rerun()
+                            # Initialize parameter request state
+                            if 'proc_group_params_requested' not in st.session_state:
+                                st.session_state['proc_group_params_requested'] = {}
+                            if g not in st.session_state['proc_group_params_requested']:
+                                st.session_state['proc_group_params_requested'][g] = False
+                            
+                            if not st.session_state['proc_group_params_requested'][g]:
+                                if st.button("Request parameters"):
+                                    st.session_state['proc_group_params_requested'][g] = True
+                            else:
+                                st.markdown("---")
+                                st.markdown("### Process Parameters")
+                                
+                                # Initialize parameters storage
+                                if 'proc_group_params' not in st.session_state:
+                                    st.session_state['proc_group_params'] = {}
+                                if g not in st.session_state['proc_group_params']:
+                                    st.session_state['proc_group_params'][g] = {
+                                        'tin': '', 'tout': '', 'time': '', 'cp': '',
+                                        'mass_flow': None, 'thermal_power': None
+                                    }
+                                
+                                params = st.session_state['proc_group_params'][g]
+                                param_cols = st.columns([1, 1, 1, 1])
+                                params['tin'] = param_cols[0].text_input("Tin (°C)", value=params.get('tin', ''), key=f"param_tin_g_{g}")
+                                params['tout'] = param_cols[1].text_input("Tout (°C)", value=params.get('tout', ''), key=f"param_tout_g_{g}")
+                                params['time'] = param_cols[2].text_input("Time (h)", value=params.get('time', ''), key=f"param_time_g_{g}")
+                                params['cp'] = param_cols[3].text_input("cp (kJ/kg·K)", value=params.get('cp', ''), key=f"param_cp_g_{g}")
+                                
+                                if st.button("Calculate energy demand", key=f"calc_g_{g}"):
+                                    try:
+                                        tin = float(params['tin'])
+                                        tout = float(params['tout'])
+                                        time = float(params['time'])
+                                        cp = float(params['cp'])
+                                        
+                                        # Example calculation: Q = m * cp * ΔT
+                                        # Assuming mass flow (m) = 1 kg/s for demonstration
+                                        delta_t = abs(tout - tin)
+                                        mass_flow = 1.0  # kg/s (placeholder)
+                                        thermal_power = mass_flow * cp * delta_t  # kW
+                                        
+                                        params['mass_flow'] = mass_flow
+                                        params['thermal_power'] = thermal_power
+                                    except (ValueError, TypeError):
+                                        st.error("Please enter valid numeric values for all parameters")
+                                
+                                # Display results if calculated
+                                if params.get('mass_flow') is not None and params.get('thermal_power') is not None:
+                                    st.success(f"**Mass Flow:** {params['mass_flow']:.2f} kg/s")
+                                    st.success(f"**Thermal Power:** {params['thermal_power']:.2f} kW")
+                                
+                                if st.button("Done", key=f"done_g_{g}"):
+                                    st.rerun()
                         
                         show_process_model_dialog()
                     
@@ -996,8 +1048,60 @@ with left:
                                         st.session_state['proc_model'][i]['level2'] = None
                                         st.session_state['proc_model'][i]['level3'] = None
                                     
-                                    if st.button("Done"):
-                                        st.rerun()
+                                    # Initialize parameter request state
+                                    if 'proc_params_requested' not in st.session_state:
+                                        st.session_state['proc_params_requested'] = {}
+                                    if i not in st.session_state['proc_params_requested']:
+                                        st.session_state['proc_params_requested'][i] = False
+                                    
+                                    if not st.session_state['proc_params_requested'][i]:
+                                        if st.button("Request parameters", key=f"req_params_sub_{i}"):
+                                            st.session_state['proc_params_requested'][i] = True
+                                    else:
+                                        st.markdown("---")
+                                        st.markdown("### Process Parameters")
+                                        
+                                        # Initialize parameters storage
+                                        if 'proc_params' not in st.session_state:
+                                            st.session_state['proc_params'] = {}
+                                        if i not in st.session_state['proc_params']:
+                                            st.session_state['proc_params'][i] = {
+                                                'tin': '', 'tout': '', 'time': '', 'cp': '',
+                                                'mass_flow': None, 'thermal_power': None
+                                            }
+                                        
+                                        params = st.session_state['proc_params'][i]
+                                        param_cols = st.columns([1, 1, 1, 1])
+                                        params['tin'] = param_cols[0].text_input("Tin (°C)", value=params.get('tin', ''), key=f"param_tin_sub_{i}")
+                                        params['tout'] = param_cols[1].text_input("Tout (°C)", value=params.get('tout', ''), key=f"param_tout_sub_{i}")
+                                        params['time'] = param_cols[2].text_input("Time (h)", value=params.get('time', ''), key=f"param_time_sub_{i}")
+                                        params['cp'] = param_cols[3].text_input("cp (kJ/kg·K)", value=params.get('cp', ''), key=f"param_cp_sub_{i}")
+                                        
+                                        if st.button("Calculate energy demand", key=f"calc_sub_{i}"):
+                                            try:
+                                                tin = float(params['tin'])
+                                                tout = float(params['tout'])
+                                                time = float(params['time'])
+                                                cp = float(params['cp'])
+                                                
+                                                # Example calculation: Q = m * cp * ΔT
+                                                # Assuming mass flow (m) = 1 kg/s for demonstration
+                                                delta_t = abs(tout - tin)
+                                                mass_flow = 1.0  # kg/s (placeholder)
+                                                thermal_power = mass_flow * cp * delta_t  # kW
+                                                
+                                                params['mass_flow'] = mass_flow
+                                                params['thermal_power'] = thermal_power
+                                            except (ValueError, TypeError):
+                                                st.error("Please enter valid numeric values for all parameters")
+                                        
+                                        # Display results if calculated
+                                        if params.get('mass_flow') is not None and params.get('thermal_power') is not None:
+                                            st.success(f"**Mass Flow:** {params['mass_flow']:.2f} kg/s")
+                                            st.success(f"**Thermal Power:** {params['thermal_power']:.2f} kW")
+                                        
+                                        if st.button("Done", key=f"done_sub_{i}"):
+                                            st.rerun()
                                 
                                 show_subprocess_model_dialog()
                             
