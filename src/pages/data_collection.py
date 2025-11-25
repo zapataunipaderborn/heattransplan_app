@@ -318,10 +318,31 @@ st.markdown(
 # Compact top padding & utility CSS to keep map tight to top-right
 st.markdown("""
 <style>
-/* Base tweaks */
-.block-container {padding-top:0rem; padding-bottom:0.3rem;}
+/* Base tweaks - make everything more compact */
+.block-container {padding-top:0rem; padding-bottom:0.1rem;}
 div[data-testid="column"] > div:has(> div.map-region) {margin-top:0;}
-.map-control-row {margin-bottom:0.25rem;}
+.map-control-row {margin-bottom:0.1rem;}
+
+/* Smaller fonts and elements */
+html, body, .stApp {font-size:11px !important;}
+.stMarkdown p, .stMarkdown span, .stMarkdown li {font-size:11px !important;}
+.stButton button {font-size:10px !important; padding:0.1rem 0.3rem !important;}
+.stTextInput input, .stNumberInput input {font-size:10px !important; padding:0.1rem 0.2rem !important;}
+.stRadio > div[role=radio] label {font-size:10px !important;}
+.stDataFrame, .stDataFrame table {font-size:9px !important;}
+.stSlider {font-size:9px !important;}
+.stSelectbox, .stMultiselect {font-size:10px !important;}
+.stExpander {font-size:10px !important;}
+
+/* Tighter expander headers */
+div.streamlit-expanderHeader {padding:0.2rem 0.3rem !important; font-size:10px !important;}
+/* Group boxed layout - smaller */
+.group-box {border:1px solid #ffffff; padding:3px 4px 4px 4px; margin:5px 0 8px 0; border-radius:4px; background:rgba(255,255,255,0.04);} 
+.group-box.collapsed {padding-bottom:2px;}
+
+/* Title with icon - smaller */
+.title-container {display: flex; align-items: center; gap: 15px; margin-bottom: 5px; margin-top: 0px;}
+h1 {font-size: 1.5rem !important; margin-bottom: 0.3rem !important;}
 
 /* Make map & snapshot adapt on narrow screens */
 @media (max-width: 1500px){
@@ -335,15 +356,6 @@ div[data-testid="column"] > div:has(> div.map-region) {margin-top:0;}
     iframe, iframe[data-testid="stIFrame"] {height:480px !important;}
     img[alt="meas_img"] {max-width:100% !important;}
 }
-
-/* Tighter expander headers */
-div.streamlit-expanderHeader {padding:0.3rem 0.5rem !important;}
-/* Group boxed layout */
-.group-box {border:2px solid #ffffff; padding:6px 8px 8px 8px; margin:10px 0 16px 0; border-radius:6px; background:rgba(255,255,255,0.04);} 
-.group-box.collapsed {padding-bottom:4px;}
-
-/* Title with icon */
-.title-container {display: flex; align-items: center; gap: 20px; margin-bottom: 10px; margin-top: 0px;}
 </style>
 """, unsafe_allow_html=True)
 
