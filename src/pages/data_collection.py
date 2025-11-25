@@ -18,6 +18,12 @@ from process_utils import (
     delete_stream_from_process,
 )
 import csv
+import os
+
+# Load process models from JSON file
+PROCESS_MODELS_PATH = os.path.join(os.path.dirname(__file__), '..', 'process_models.json')
+with open(PROCESS_MODELS_PATH, 'r') as f:
+    PROCESS_MODEL_DICT = json.load(f)
 
 # Helper: convert pixel relative to center in snapshot to lon/lat using Web Mercator math
 def snapshot_pixel_to_lonlat(px, py, center_ll, z_level, img_w, img_h):
@@ -726,33 +732,6 @@ with left:
                         # Use dialog to show process model selector
                         @st.dialog("Process Model Selection")
                         def show_process_model_dialog():
-                            PROCESS_MODEL_DICT = {
-                                "Drying": {
-                                    "Spray drying": ["milk powder", "coffee powder", "egg powder"],
-                                    "Granular drying": ["grain", "sand", "plastic granules"],
-                                    "Tunnel drying": ["fruits", "vegetables", "ceramics"],
-                                    "Contact drying": ["paper", "food", "wood"],
-                                    "Freeze drying": ["coffee extract", "fruit extract"]
-                                },
-                                "Autoclaving": {
-                                    "Sterilization": ["canned food", "medical tools"],
-                                    "Hardening": ["vulcanization of rubber"]
-                                },
-                                "Thermal activation solid products": {
-                                    "Boiling small scale": ["canned food", "vegetables"],
-                                    "Boiling large scale": ["specialty chemicals", "food"]
-                                },
-                                "Thermal activation fluid products": {
-                                    "Continuous bath heating": ["boiling vegetables", "pasteurization"],
-                                    "Continuous heating of fluid": ["alcohol chemical conversion", "milk pasteurization"]
-                                },
-                                "Thermal separation": {
-                                    "Distillation": ["alcohol chemical conversion", "specialty chemicals"],
-                                    "Evaporation": ["fruit juice", "milk"],
-                                    "Shipping": ["sugar syrup"]
-                                }
-                            }
-                            
                             st.markdown("### Select process category, type, and product")
                             
                             # Level 1: Main category
@@ -955,33 +934,6 @@ with left:
                             if sub_model_btn_col.button("Select Process Model", key=f"open_subprocess_model_dialog_{i}"):
                                 @st.dialog("Subprocess Process Model Selection")
                                 def show_subprocess_model_dialog():
-                                    PROCESS_MODEL_DICT = {
-                                        "Drying": {
-                                            "Spray drying": ["milk powder", "coffee powder", "egg powder"],
-                                            "Granular drying": ["grain", "sand", "plastic granules"],
-                                            "Tunnel drying": ["fruits", "vegetables", "ceramics"],
-                                            "Contact drying": ["paper", "food", "wood"],
-                                            "Freeze drying": ["coffee extract", "fruit extract"]
-                                        },
-                                        "Autoclaving": {
-                                            "Sterilization": ["canned food", "medical tools"],
-                                            "Hardening": ["vulcanization of rubber"]
-                                        },
-                                        "Thermal activation solid products": {
-                                            "Boiling small scale": ["canned food", "vegetables"],
-                                            "Boiling large scale": ["specialty chemicals", "food"]
-                                        },
-                                        "Thermal activation fluid products": {
-                                            "Continuous bath heating": ["boiling vegetables", "pasteurization"],
-                                            "Continuous heating of fluid": ["alcohol chemical conversion", "milk pasteurization"]
-                                        },
-                                        "Thermal separation": {
-                                            "Distillation": ["alcohol chemical conversion", "specialty chemicals"],
-                                            "Evaporation": ["fruit juice", "milk"],
-                                            "Shipping": ["sugar syrup"]
-                                        }
-                                    }
-                                    
                                     st.markdown("### Select process category, type, and product")
                                     
                                     # Level 1: Main category

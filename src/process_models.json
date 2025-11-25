@@ -1,0 +1,26 @@
+{
+  "Drying": {
+    "Spray drying": ["milk powder", "coffee powder", "egg powder"],
+    "Granular drying": ["grain", "sand", "plastic granules"],
+    "Tunnel drying": ["fruits", "vegetables", "ceramics"],
+    "Contact drying": ["paper", "food", "wood"],
+    "Freeze drying": ["coffee extract", "fruit extract"]
+  },
+  "Autoclaving": {
+    "Sterilization": ["canned food", "medical tools"],
+    "Hardening": ["vulcanization of rubber"]
+  },
+  "Thermal activation solid products": {
+    "Boiling small scale": ["canned food", "vegetables"],
+    "Boiling large scale": ["specialty chemicals", "food"]
+  },
+  "Thermal activation fluid products": {
+    "Continuous bath heating": ["boiling vegetables", "pasteurization"],
+    "Continuous heating of fluid": ["alcohol chemical conversion", "milk pasteurization"]
+  },
+  "Thermal separation": {
+    "Distillation": ["alcohol chemical conversion", "specialty chemicals"],
+    "Evaporation": ["fruit juice", "milk"],
+    "Shipping": ["sugar syrup"]
+  }
+}
