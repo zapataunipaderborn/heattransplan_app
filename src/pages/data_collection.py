@@ -800,10 +800,8 @@ with left:
                             if g not in st.session_state['proc_group_params_requested']:
                                 st.session_state['proc_group_params_requested'][g] = False
                             
-                            if not st.session_state['proc_group_params_requested'][g]:
-                                if st.button("Request parameters"):
-                                    st.session_state['proc_group_params_requested'][g] = True
-                            else:
+                            if st.button("Request parameters") or st.session_state['proc_group_params_requested'][g]:
+                                st.session_state['proc_group_params_requested'][g] = True
                                 st.markdown("---")
                                 st.markdown("### Process Parameters")
                                 
@@ -846,7 +844,7 @@ with left:
                                     st.success(f"**Mass Flow:** {params['mass_flow']:.2f} kg/s")
                                     st.success(f"**Thermal Power:** {params['thermal_power']:.2f} kW")
                                 
-                                if st.button("Done", key=f"done_g_{g}"):
+                                if st.button("Import energy values", key=f"done_g_{g}"):
                                     st.rerun()
                         
                         show_process_model_dialog()
@@ -968,24 +966,22 @@ with left:
                         if len(st.session_state['proc_extra_info_expanded']) < len(st.session_state['processes']):
                             st.session_state['proc_extra_info_expanded'].extend([False] * (len(st.session_state['processes']) - len(st.session_state['proc_extra_info_expanded'])))
                         
-                        extra_header_cols = st.columns([0.05, 0.95])
+                        extra_header_cols = st.columns([0.05, 0.45, 0.5])
                         extra_toggle_label = "▾" if st.session_state['proc_extra_info_expanded'][i] else "▸"
                         if extra_header_cols[0].button(extra_toggle_label, key=f"extra_info_toggle_{i}"):
                             st.session_state['proc_extra_info_expanded'][i] = not st.session_state['proc_extra_info_expanded'][i]
                             st.rerun()
                         extra_header_cols[1].markdown("**Information**")
                         
-                        if st.session_state['proc_extra_info_expanded'][i]:
-                            # Process Model button and dialog for subprocess
-                            if 'proc_model' not in st.session_state:
-                                st.session_state['proc_model'] = {}
-                            if i not in st.session_state['proc_model']:
-                                st.session_state['proc_model'][i] = {'level1': None, 'level2': None, 'level3': None}
-                            
-                            sub_model_btn_col, sub_model_display_col = st.columns([0.3, 0.7])
-                            if sub_model_btn_col.button("Select Process Model", key=f"open_subprocess_model_dialog_{i}"):
-                                @st.dialog("Subprocess Process Model Selection")
-                                def show_subprocess_model_dialog():
+                        # Process Model button next to Information header
+                        if 'proc_model' not in st.session_state:
+                            st.session_state['proc_model'] = {}
+                        if i not in st.session_state['proc_model']:
+                            st.session_state['proc_model'][i] = {'level1': None, 'level2': None, 'level3': None}
+                        
+                        if extra_header_cols[2].button("Select Process Model", key=f"open_subprocess_model_dialog_{i}"):
+                            @st.dialog("Subprocess Process Model Selection")
+                            def show_subprocess_model_dialog():
                                     st.markdown("### Select process category, type, and product")
                                     
                                     # Level 1: Main category
@@ -1054,10 +1050,8 @@ with left:
                                     if i not in st.session_state['proc_params_requested']:
                                         st.session_state['proc_params_requested'][i] = False
                                     
-                                    if not st.session_state['proc_params_requested'][i]:
-                                        if st.button("Request parameters", key=f"req_params_sub_{i}"):
-                                            st.session_state['proc_params_requested'][i] = True
-                                    else:
+                                    if st.button("Request parameters", key=f"req_params_sub_{i}") or st.session_state['proc_params_requested'][i]:
+                                        st.session_state['proc_params_requested'][i] = True
                                         st.markdown("---")
                                         st.markdown("### Process Parameters")
                                         
@@ -1100,22 +1094,12 @@ with left:
                                             st.success(f"**Mass Flow:** {params['mass_flow']:.2f} kg/s")
                                             st.success(f"**Thermal Power:** {params['thermal_power']:.2f} kW")
                                         
-                                        if st.button("Done", key=f"done_sub_{i}"):
+                                        if st.button("Import energy values", key=f"done_sub_{i}"):
                                             st.rerun()
-                                
-                                show_subprocess_model_dialog()
                             
-                            # Display current selection
-                            current_model = st.session_state['proc_model'][i]
-                            if current_model.get('level3'):
-                                sub_model_display_col.caption(f"Model: {current_model['level1']} → {current_model['level2']} → {current_model['level3']}")
-                            elif current_model.get('level2'):
-                                sub_model_display_col.caption(f"Model: {current_model['level1']} → {current_model['level2']}")
-                            elif current_model.get('level1'):
-                                sub_model_display_col.caption(f"Model: {current_model['level1']}")
-                            else:
-                                sub_model_display_col.caption("No model selected")
-                            
+                            show_subprocess_model_dialog()
+                        
+                        if st.session_state['proc_extra_info_expanded'][i]:
                             # Product information
                             r1c1,r1c2,r1c3,r1c4 = st.columns([1,1,1,1])
                             p['conntemp'] = r1c1.text_input("Product Tin", value=p.get('conntemp',''), key=f"p_conntemp_{i}")
