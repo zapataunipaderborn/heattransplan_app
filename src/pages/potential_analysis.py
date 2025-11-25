@@ -17,6 +17,14 @@ st.markdown(
         min-width: 0 !important;
         margin-left: 0 !important;
     }
+    
+    /* Smaller fonts and elements */
+    html, body, .stApp {font-size:11px !important;}
+    .stMarkdown p, .stMarkdown span, .stMarkdown li {font-size:11px !important;}
+    .stButton button {font-size:10px !important; padding:0.1rem 0.3rem !important;}
+    .stTextInput input, .stNumberInput input {font-size:10px !important; padding:0.1rem 0.2rem !important;}
+    h1 {font-size: 1.5rem !important; margin-bottom: 0.3rem !important;}
+    </style>
     """,
     unsafe_allow_html=True,
 )

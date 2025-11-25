@@ -546,6 +546,34 @@ with left:
     
     st.markdown("---")
     
+    # File uploader - only show when map is NOT locked (in Select Map mode)
+    if not st.session_state.get('map_locked', False):
+        if 'state_just_loaded' in st.session_state and st.session_state['state_just_loaded']:
+            if st.button("Load Another", key="btn_load_another_left", help="Load another file"):
+                st.session_state['state_just_loaded'] = False
+                st.rerun()
+        else:
+            st.markdown("**Load saved state:**")
+            uploaded_file = st.file_uploader("Load file", type=['json'], key="upload_state_left", label_visibility="collapsed")
+            
+            if uploaded_file is not None:
+                try:
+                    # Read the file immediately to avoid session state issues
+                    file_contents = uploaded_file.getvalue().decode('utf-8')
+                    success, message = load_app_state(file_contents)
+                    if success:
+                        st.session_state['state_just_loaded'] = True
+                        # Clear the file uploader to prevent MediaFileStorageError
+                        if 'upload_state_left' in st.session_state:
+                            del st.session_state['upload_state_left']
+                        st.rerun()
+                    else:
+                        st.error(message)
+                except Exception as e:
+                    st.error(f"Error loading file: {str(e)}")
+        
+        st.markdown("---")
+    
     mode = st.session_state['ui_mode_radio']
     # Subprocess & Stream UI (only show in Analyze mode to mimic original workflow)
     if mode == "Analyze":
