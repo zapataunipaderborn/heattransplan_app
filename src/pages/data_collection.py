@@ -932,6 +932,29 @@ with left:
                 
                 for local_idx, i in enumerate(g_list):
                     p = st.session_state['processes'][i]
+                    
+                    # Initialize all subprocess-specific session state variables BEFORE any UI elements
+                    # Process Model initialization
+                    if 'proc_model' not in st.session_state:
+                        st.session_state['proc_model'] = {}
+                    if i not in st.session_state['proc_model']:
+                        st.session_state['proc_model'][i] = {'level1': None, 'level2': None}
+                    
+                    # Initialize parameter request state
+                    if 'proc_params_requested' not in st.session_state:
+                        st.session_state['proc_params_requested'] = {}
+                    if i not in st.session_state['proc_params_requested']:
+                        st.session_state['proc_params_requested'][i] = False
+                    
+                    # Initialize parameters storage
+                    if 'proc_params' not in st.session_state:
+                        st.session_state['proc_params'] = {}
+                    if i not in st.session_state['proc_params']:
+                        st.session_state['proc_params'][i] = {
+                            'tin': '', 'tout': '', 'time': '', 'cp': '',
+                            'mass_flow': None, 'thermal_power': None
+                        }
+                    
                     # Per-subprocess header (toggle | name | size | place | delete)
                     header_cols = st.columns([0.06, 0.54, 0.14, 0.16, 0.10])
                     toggle_label = "▾" if st.session_state['proc_expanded'][i] else "▸"
@@ -1005,16 +1028,11 @@ with left:
                             st.rerun()
                         extra_header_cols[1].markdown("**Information**")
                         
-                        # Process Model button next to Information header
-                        if 'proc_model' not in st.session_state:
-                            st.session_state['proc_model'] = {}
-                        if i not in st.session_state['proc_model']:
-                            st.session_state['proc_model'][i] = {'level1': None, 'level2': None, 'level3': None}
-                        
+                        # Process Model button (initialization already done at top of loop)
                         if extra_header_cols[2].button("Select Process Model", key=f"open_subprocess_model_dialog_{i}"):
                             @st.dialog("Subprocess Process Model Selection")
                             def show_subprocess_model_dialog():
-                                    st.markdown("### Select process category, type, and product")
+                                    st.markdown("### Select process category and type")
                                     
                                     # Level 1: Main category
                                     level1_options = ["Select category..."] + list(PROCESS_MODEL_DICT.keys())
@@ -1031,7 +1049,7 @@ with left:
                                     if selected_level1 != "Select category...":
                                         st.session_state['proc_model'][i]['level1'] = selected_level1
                                         
-                                        # Level 2: Subcategory
+                                        # Level 2: Subcategory (final level)
                                         level2_options = ["Select type..."] + list(PROCESS_MODEL_DICT[selected_level1].keys())
                                         current_level2 = st.session_state['proc_model'][i].get('level2')
                                         if current_level2 and current_level2 not in level2_options:
@@ -1048,53 +1066,16 @@ with left:
                                         
                                         if selected_level2 != "Select type...":
                                             st.session_state['proc_model'][i]['level2'] = selected_level2
-                                            
-                                            # Level 3: Product
-                                            level3_options = ["Select product..."] + PROCESS_MODEL_DICT[selected_level1][selected_level2]
-                                            current_level3 = st.session_state['proc_model'][i].get('level3')
-                                            if current_level3 and current_level3 not in level3_options:
-                                                st.session_state['proc_model'][i]['level3'] = None
-                                                current_level3 = None
-                                            level3_index = level3_options.index(current_level3) if current_level3 in level3_options else 0
-                                            
-                                            selected_level3 = st.selectbox(
-                                                "Product",
-                                                options=level3_options,
-                                                index=level3_index,
-                                                key=f"dialog_subprocess_model_level3_{i}"
-                                            )
-                                            
-                                            if selected_level3 != "Select product...":
-                                                st.session_state['proc_model'][i]['level3'] = selected_level3
-                                            else:
-                                                st.session_state['proc_model'][i]['level3'] = None
                                         else:
                                             st.session_state['proc_model'][i]['level2'] = None
-                                            st.session_state['proc_model'][i]['level3'] = None
                                     else:
                                         st.session_state['proc_model'][i]['level1'] = None
                                         st.session_state['proc_model'][i]['level2'] = None
-                                        st.session_state['proc_model'][i]['level3'] = None
-                                    
-                                    # Initialize parameter request state
-                                    if 'proc_params_requested' not in st.session_state:
-                                        st.session_state['proc_params_requested'] = {}
-                                    if i not in st.session_state['proc_params_requested']:
-                                        st.session_state['proc_params_requested'][i] = False
                                     
                                     if st.button("Request parameters", key=f"req_params_sub_{i}") or st.session_state['proc_params_requested'][i]:
                                         st.session_state['proc_params_requested'][i] = True
                                         st.markdown("---")
                                         st.markdown("### Process Parameters")
-                                        
-                                        # Initialize parameters storage
-                                        if 'proc_params' not in st.session_state:
-                                            st.session_state['proc_params'] = {}
-                                        if i not in st.session_state['proc_params']:
-                                            st.session_state['proc_params'][i] = {
-                                                'tin': '', 'tout': '', 'time': '', 'cp': '',
-                                                'mass_flow': None, 'thermal_power': None
-                                            }
                                         
                                         params = st.session_state['proc_params'][i]
                                         param_cols = st.columns([1, 1, 1, 1])
