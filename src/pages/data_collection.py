@@ -16,6 +16,16 @@ from process_utils import (
     delete_process,
     add_stream_to_process,
     delete_stream_from_process,
+    # New recursive functions for sub-subprocesses
+    create_process_node,
+    create_stream,
+    add_child_to_node,
+    delete_child_from_node,
+    add_stream_to_node,
+    delete_stream_from_node,
+    iterate_all_nodes,
+    copy_streams_to_all_descendants,
+    get_level_name,
 )
 import csv
 import os
@@ -24,6 +34,290 @@ import os
 PROCESS_MODELS_PATH = os.path.join(os.path.dirname(__file__), '..', 'process_models.json')
 with open(PROCESS_MODELS_PATH, 'r') as f:
     PROCESS_MODEL_DICT = json.load(f)
+
+
+# =============================================================================
+# RECURSIVE UI FUNCTION for rendering children at any level
+# =============================================================================
+def render_children_recursive(st_module, parent_node, key_prefix, indent_level=1, 
+                               process_model_dict=None, parent_group_idx=None):
+    """
+    Render children (sub-subprocesses, sub-sub-subprocesses, etc.) recursively.
+    This is the REUSABLE function that provides the same UI at every level.
+    
+    Args:
+        st_module: Streamlit module
+        parent_node: The parent node containing children to render
+        key_prefix: Unique key prefix for widgets
+        indent_level: Visual indentation level
+        process_model_dict: Dict of process models for selection
+        parent_group_idx: Index of the parent process group
+    """
+    children = parent_node.get('children', [])
+    level = parent_node.get('level', 0) + 1
+    level_name = get_level_name(level)
+    child_level_name = get_level_name(level + 1)
+    
+    # Indentation style based on level
+    indent_px = indent_level * 15
+    separator_color = '#cccccc' if indent_level > 1 else '#aaaaaa'
+    
+    for ci, child in enumerate(children):
+        child_key = f"{key_prefix}_{ci}"
+        
+        # Ensure child has level set
+        if 'level' not in child:
+            child['level'] = level
+        
+        # Separator line with indentation
+        st_module.markdown(
+            f"<div style='margin-left:{indent_px}px;height:1px;background:{separator_color};margin:4px 0;'></div>", 
+            unsafe_allow_html=True
+        )
+        
+        # Initialize expanded state for this child
+        if 'expanded' not in child:
+            child['expanded'] = False
+        
+        # Header row: Toggle | Name | Size | Place | Count | Delete
+        cols = st_module.columns([0.05, 0.40, 0.12, 0.12, 0.08, 0.08, 0.05])
+        
+        # Toggle expand/collapse
+        toggle_label = "▾" if child.get('expanded', False) else "▸"
+        if cols[0].button(toggle_label, key=f"{child_key}_toggle"):
+            child['expanded'] = not child.get('expanded', False)
+            st_module.rerun()
+        
+        # Name input
+        default_name = child.get('name', f'{level_name} {ci+1}')
+        child['name'] = cols[1].text_input(
+            f"{level_name} name",
+            value=default_name,
+            key=f"{child_key}_name",
+            label_visibility="collapsed",
+            placeholder=f"{level_name} {ci+1}"
+        )
+        
+        # Size slider
+        if 'box_scale' not in child or child.get('box_scale') in (None, ''):
+            child['box_scale'] = 0.8  # Smaller default for deeper levels
+        try:
+            current_scale = float(child.get('box_scale', 0.8))
+        except (ValueError, TypeError):
+            current_scale = 0.8
+        child['box_scale'] = cols[2].slider(
+            "Size",
+            min_value=0.3,
+            max_value=2.0,
+            value=current_scale,
+            step=0.1,
+            key=f"{child_key}_scale",
+            label_visibility="collapsed"
+        )
+        
+        # Place button
+        place_key = f"child_{key_prefix}_{ci}"
+        place_active = (st_module.session_state.get('placement_mode') and 
+                       st_module.session_state.get('placing_process_idx') == place_key)
+        if not place_active:
+            if cols[3].button("Place", key=f"{child_key}_place"):
+                st_module.session_state['placement_mode'] = True
+                st_module.session_state['measure_mode'] = False
+                st_module.session_state['placing_process_idx'] = place_key
+                st_module.session_state['placing_node_ref'] = child
+                st_module.session_state['ui_status_msg'] = f"Click on map to place: {child.get('name', level_name)}"
+                st_module.rerun()
+        else:
+            if cols[3].button("Done", key=f"{child_key}_place_done"):
+                st_module.session_state['placement_mode'] = False
+                st_module.session_state['placing_process_idx'] = None
+                st_module.session_state['placing_node_ref'] = None
+                st_module.session_state['ui_status_msg'] = "Placement mode disabled"
+                st_module.rerun()
+        
+        # Child count
+        grandchild_count = len(child.get('children', []))
+        cols[4].markdown(f"**{grandchild_count}**")
+        
+        # Add grandchild button
+        if cols[5].button(f"+", key=f"{child_key}_add_child", help=f"Add {child_level_name}"):
+            add_child_to_node(child, f"{child_level_name} {grandchild_count + 1}")
+            st_module.rerun()
+        
+        # Delete button
+        if cols[6].button("✕", key=f"{child_key}_delete"):
+            delete_child_from_node(parent_node, ci)
+            st_module.rerun()
+        
+        # Expanded content
+        if child.get('expanded', False):
+            # Information toggle
+            if 'info_expanded' not in child:
+                child['info_expanded'] = False
+            
+            info_cols = st_module.columns([0.05, 0.95])
+            info_toggle = "▾" if child.get('info_expanded', False) else "▸"
+            if info_cols[0].button(info_toggle, key=f"{child_key}_info_toggle"):
+                child['info_expanded'] = not child.get('info_expanded', False)
+                st_module.rerun()
+            info_cols[1].markdown("**Information**")
+            
+            if child.get('info_expanded', False):
+                # Coordinates
+                coord_cols = st_module.columns([1, 1, 1])
+                child['lat'] = coord_cols[0].text_input("Latitude", value=str(child.get('lat', '') or ''), key=f"{child_key}_lat")
+                child['lon'] = coord_cols[1].text_input("Longitude", value=str(child.get('lon', '') or ''), key=f"{child_key}_lon")
+                
+                # Hours
+                if 'hours' not in child:
+                    child['hours'] = ''
+                child['hours'] = coord_cols[2].text_input("Hours", value=str(child.get('hours', '') or ''), key=f"{child_key}_hours")
+                
+                # Notes
+                if 'extra_info' not in child:
+                    child['extra_info'] = {}
+                child['extra_info']['notes'] = st_module.text_area(
+                    "Notes", 
+                    value=child['extra_info'].get('notes', ''), 
+                    key=f"{child_key}_notes", 
+                    height=60
+                )
+            
+            # Streams section
+            streams_header = st_module.columns([0.7, 0.3])
+            streams_header[0].markdown("**Streams**")
+            if streams_header[1].button("➕ Stream", key=f"{child_key}_add_stream"):
+                add_stream_to_node(child)
+                st_module.rerun()
+            
+            streams = child.get('streams', [])
+            if not streams:
+                st_module.caption("No streams yet. Use ➕ to add one.")
+            else:
+                for si, stream in enumerate(streams):
+                    render_stream_recursive(st_module, stream, f"{child_key}_stream_{si}", child, si)
+            
+            # Recursive children section (grandchildren, great-grandchildren, etc.)
+            grandchildren = child.get('children', [])
+            if grandchildren or True:  # Always show the section
+                gc_header = st_module.columns([0.45, 0.20, 0.20, 0.15])
+                gc_header[0].markdown(f"**{child_level_name}s:**")
+                gc_header[1].caption(f"({len(grandchildren)} items)")
+                
+                # Sync streams button - copies streams to all grandchildren
+                if len(grandchildren) > 0:
+                    if gc_header[2].button("🔄 Sync", key=f"{child_key}_sync_gc", help="Copy streams to all children"):
+                        copy_streams_to_all_descendants(child)
+                        st_module.session_state['ui_status_msg'] = f"Synced streams to {len(grandchildren)} child(ren)"
+                        st_module.rerun()
+                else:
+                    gc_header[2].caption("")  # Empty placeholder
+                
+                if gc_header[3].button("➕ Add", key=f"{child_key}_add_gc"):
+                    add_child_to_node(child, f"{child_level_name} {len(grandchildren) + 1}")
+                    st_module.rerun()
+                
+                if grandchildren:
+                    # Recursively render grandchildren
+                    render_children_recursive(
+                        st_module, child, child_key, 
+                        indent_level=indent_level + 1,
+                        process_model_dict=process_model_dict,
+                        parent_group_idx=parent_group_idx
+                    )
+                else:
+                    st_module.caption(f"No {child_level_name.lower()}s yet.")
+
+
+def render_stream_recursive(st_module, stream, stream_key, parent_node, stream_index):
+    """
+    Render a single stream with the same UI at any level.
+    This is REUSABLE for streams in any process node.
+    """
+    # Ensure stream has required fields
+    if 'name' not in stream:
+        stream['name'] = f"Stream {stream_index + 1}"
+    if 'type' not in stream:
+        stream['type'] = 'product'
+    if 'properties' not in stream:
+        stream['properties'] = {'prop1': 'Tin', 'prop2': 'Tout', 'prop3': 'ṁ', 'prop4': 'cp'}
+    if 'values' not in stream:
+        stream['values'] = {'val1': '', 'val2': '', 'val3': '', 'val4': ''}
+    
+    # Stream header
+    header_cols = st_module.columns([1.5, 1, 0.5])
+    stream['name'] = header_cols[0].text_input(
+        "Stream name",
+        value=stream.get('name', ''),
+        key=f"{stream_key}_name",
+        label_visibility="collapsed",
+        placeholder=f"Stream {stream_index + 1}"
+    )
+    
+    stream_types = ["product", "steam", "air", "water"]
+    current_type = stream.get('type', 'product')
+    if current_type not in stream_types:
+        current_type = 'product'
+    stream['type'] = header_cols[1].selectbox(
+        "Type",
+        options=stream_types,
+        index=stream_types.index(current_type),
+        key=f"{stream_key}_type",
+        label_visibility="collapsed"
+    )
+    
+    if header_cols[2].button("✕", key=f"{stream_key}_delete"):
+        delete_stream_from_node(parent_node, stream_index)
+        st_module.rerun()
+    
+    # Property selection
+    prop_options = ["Tin", "Tout", "ṁ", "cp", "Water Content In", "Water Content Out", "Density", "Pressure", "Notes"]
+    prop_cols = st_module.columns([1, 1, 1, 1])
+    
+    for pi, (prop_key, val_key) in enumerate([('prop1', 'val1'), ('prop2', 'val2'), ('prop3', 'val3'), ('prop4', 'val4')]):
+        with prop_cols[pi]:
+            current_prop = stream['properties'].get(prop_key, prop_options[pi])
+            if current_prop not in prop_options:
+                current_prop = prop_options[pi]
+            
+            stream['properties'][prop_key] = st_module.selectbox(
+                f"Property {pi+1}",
+                options=prop_options,
+                index=prop_options.index(current_prop),
+                key=f"{stream_key}_prop_{pi}",
+                label_visibility="collapsed"
+            )
+            
+            selected_prop = stream['properties'][prop_key]
+            if selected_prop == "Notes":
+                stream['values'][val_key] = st_module.text_area(
+                    f"Value {pi+1}",
+                    value=str(stream['values'].get(val_key, '')),
+                    key=f"{stream_key}_val_{pi}",
+                    height=60,
+                    label_visibility="collapsed"
+                )
+            else:
+                stream['values'][val_key] = st_module.text_input(
+                    f"Value {pi+1}",
+                    value=str(stream['values'].get(val_key, '')),
+                    key=f"{stream_key}_val_{pi}",
+                    label_visibility="collapsed"
+                )
+    
+    # Update legacy fields
+    for pi, (prop_key, val_key) in enumerate([('prop1', 'val1'), ('prop2', 'val2'), ('prop3', 'val3'), ('prop4', 'val4')]):
+        prop = stream['properties'].get(prop_key, '')
+        val = stream['values'].get(val_key, '')
+        if prop == 'Tin':
+            stream['temp_in'] = val
+        elif prop == 'Tout':
+            stream['temp_out'] = val
+        elif prop == 'ṁ':
+            stream['mdot'] = val
+        elif prop == 'cp':
+            stream['cp'] = val
+
 
 # Helper: convert pixel relative to center in snapshot to lon/lat using Web Mercator math
 def snapshot_pixel_to_lonlat(px, py, center_ll, z_level, img_w, img_h):
@@ -1239,6 +1533,41 @@ with left:
                             s['temp_out'] = s['values'].get('val2', '') if s['properties'].get('prop2') == 'Tout' else s.get('temp_out', '')
                             s['mdot'] = s['values'].get('val3', '') if s['properties'].get('prop3') == 'ṁ' else s.get('mdot', '')
                             s['cp'] = s['values'].get('val4', '') if s['properties'].get('prop4') == 'cp' else s.get('cp', '')
+                        
+                        # =====================================================
+                        # SUB-SUBPROCESSES SECTION - Recursive children
+                        # =====================================================
+                        # Initialize children list if not exists
+                        if 'children' not in p:
+                            p['children'] = []
+                        
+                        # Sub-subprocesses header with Add button and Sync button
+                        subsub_header_cols = st.columns([0.45, 0.20, 0.20, 0.15])
+                        subsub_header_cols[0].markdown("**Sub-subprocesses:**")
+                        child_count = len(p.get('children', []))
+                        subsub_header_cols[1].caption(f"({child_count} items)")
+                        
+                        # Sync streams button - copies streams from this subprocess to all children
+                        if child_count > 0:
+                            if subsub_header_cols[2].button("🔄 Sync", key=f"sync_streams_{i}", help="Copy streams to all sub-subprocesses"):
+                                copy_streams_to_all_descendants(p)
+                                st.session_state['ui_status_msg'] = f"Synced streams to {child_count} sub-subprocess(es)"
+                                st.rerun()
+                        else:
+                            subsub_header_cols[2].caption("")  # Empty placeholder
+                        
+                        if subsub_header_cols[3].button("➕ Add", key=f"add_subsub_{i}"):
+                            add_child_to_node(p, f"Sub-subprocess {child_count + 1}")
+                            st.rerun()
+                        
+                        # Render sub-subprocesses recursively
+                        if p.get('children'):
+                            render_children_recursive(st, p, f"subsub_{i}", indent_level=1, 
+                                                    process_model_dict=PROCESS_MODEL_DICT,
+                                                    parent_group_idx=g)
+                        else:
+                            st.caption("No sub-subprocesses yet. Use ➕ to add one.")
+                        
                     if local_idx < len(g_list) - 1:
                         st.markdown("<div style='height:1px; background:#888888; opacity:0.5; margin:4px 0;'></div>", unsafe_allow_html=True)
                 # Bottom separator after expanded group
@@ -1587,6 +1916,14 @@ div.leaflet-container {background: #f2f2f3 !important;}
                         if group_idx < len(st.session_state.get('proc_group_names', [])):
                             group_name = st.session_state['proc_group_names'][group_idx]
                             st.info(f"📍 Placing Process: {group_name} → Click anywhere on the map to place the process rectangle")
+                    elif isinstance(placing_idx, str) and placing_idx.startswith('child_'):
+                        # Child node placement (sub-subprocess, etc.)
+                        child_node = st.session_state.get('placing_node_ref')
+                        if child_node:
+                            child_name = child_node.get('name', 'Child')
+                            child_level = child_node.get('level', 2)
+                            level_name = get_level_name(child_level)
+                            st.info(f"📍 Placing {level_name}: {child_name} → Click anywhere on the map to place")
                     elif isinstance(placing_idx, int) and 0 <= placing_idx < len(st.session_state.get('processes', [])):
                         # Subprocess placement
                         pname = st.session_state['processes'][placing_idx].get('name') or f"Subprocess {placing_idx+1}"
@@ -2219,6 +2556,20 @@ div.leaflet-container {background: #f2f2f3 !important;}
                             # Auto-disable placement mode after successful placement
                             st.session_state['placement_mode'] = False
                             st.session_state['placing_process_idx'] = None
+                            st.rerun()
+                        elif isinstance(placing_idx, str) and placing_idx.startswith('child_'):
+                            # Child node placement (sub-subprocess, sub-sub-subprocess, etc.)
+                            # The child node reference should be stored in session state
+                            child_node = st.session_state.get('placing_node_ref')
+                            if child_node is not None:
+                                child_node['lat'] = round(lat_new, 6)
+                                child_node['lon'] = round(lon_new, 6)
+                                child_name = child_node.get('name', 'Child')
+                                st.session_state['ui_status_msg'] = f"✅ {child_name} placed at ({lat_new:.6f}, {lon_new:.6f})"
+                            # Auto-disable placement mode after successful placement
+                            st.session_state['placement_mode'] = False
+                            st.session_state['placing_process_idx'] = None
+                            st.session_state['placing_node_ref'] = None
                             st.rerun()
                         elif isinstance(placing_idx, int):
                             # Subprocess placement
