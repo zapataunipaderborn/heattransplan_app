@@ -38,70 +38,58 @@ with open(PROCESS_MODELS_PATH, 'r') as f:
 # =============================================================================
 # RECURSIVE UI FUNCTION for rendering children at any level
 # =============================================================================
-def render_children_recursive(st_module, parent_node, key_prefix, indent_level=1, 
-                               process_model_dict=None, parent_group_idx=None,
-                               parent_subprocess_idx=None):
+def render_subsubprocesses(st_module, subprocess_node, subprocess_idx, process_model_dict=None):
     """
-    Render children (sub-subprocesses, sub-sub-subprocesses, etc.) recursively.
-    This is the REUSABLE function that provides the same UI at every level.
+    Render sub-subprocesses for a subprocess. This is the FINAL level (level 2).
+    No deeper recursion - only 3 levels: Process > Subprocess > Sub-subprocess
     
     Args:
         st_module: Streamlit module
-        parent_node: The parent node containing children to render
-        key_prefix: Unique key prefix for widgets
-        indent_level: Visual indentation level
+        subprocess_node: The subprocess containing sub-subprocesses
+        subprocess_idx: Index of the parent subprocess
         process_model_dict: Dict of process models for selection
-        parent_group_idx: Index of the parent process group
-        parent_subprocess_idx: Index of the parent subprocess (for map overlay tracking)
     """
-    children = parent_node.get('children', [])
-    level = parent_node.get('level', 0) + 1
-    level_name = get_level_name(level)
-    child_level_name = get_level_name(level + 1)
-    
-    # Indentation style based on level
-    indent_px = indent_level * 15
-    separator_color = '#cccccc' if indent_level > 1 else '#aaaaaa'
+    children = subprocess_node.get('children', [])
     
     for ci, child in enumerate(children):
-        child_key = f"{key_prefix}_{ci}"
+        child_key = f"subsub_{subprocess_idx}_{ci}"
         
         # Ensure child has level set
         if 'level' not in child:
-            child['level'] = level
+            child['level'] = 2  # Sub-subprocess is level 2
         
-        # Separator line with indentation
+        # Separator line
         st_module.markdown(
-            f"<div style='margin-left:{indent_px}px;height:1px;background:{separator_color};margin:4px 0;'></div>", 
+            "<div style='margin-left:15px;height:1px;background:#cccccc;margin:4px 0;'></div>", 
             unsafe_allow_html=True
         )
         
-        # Initialize expanded state for this child
+        # Initialize expanded state
         if 'expanded' not in child:
             child['expanded'] = False
         
-        # Header row: Toggle | Name | Size | Place | Count | Add | Delete
-        cols = st_module.columns([0.05, 0.40, 0.12, 0.12, 0.08, 0.08, 0.05])
+        # Header row: Toggle | Name | Size | Place | Delete
+        cols = st_module.columns([0.05, 0.45, 0.15, 0.15, 0.08])
         
-        # Toggle expand/collapse (for UI details)
+        # Toggle expand/collapse
         toggle_label = "▾" if child.get('expanded', False) else "▸"
         if cols[0].button(toggle_label, key=f"{child_key}_toggle"):
             child['expanded'] = not child.get('expanded', False)
             st_module.rerun()
         
         # Name input
-        default_name = child.get('name', f'{level_name} {ci+1}')
+        default_name = child.get('name', f'Sub-subprocess {ci+1}')
         child['name'] = cols[1].text_input(
-            f"{level_name} name",
+            "Sub-subprocess name",
             value=default_name,
             key=f"{child_key}_name",
             label_visibility="collapsed",
-            placeholder=f"{level_name} {ci+1}"
+            placeholder=f"Sub-subprocess {ci+1}"
         )
         
         # Size slider
         if 'box_scale' not in child or child.get('box_scale') in (None, ''):
-            child['box_scale'] = 0.8  # Smaller default for deeper levels
+            child['box_scale'] = 0.8
         try:
             current_scale = float(child.get('box_scale', 0.8))
         except (ValueError, TypeError):
@@ -117,7 +105,7 @@ def render_children_recursive(st_module, parent_node, key_prefix, indent_level=1
         )
         
         # Place button
-        place_key = f"child_{key_prefix}_{ci}"
+        place_key = f"child_subsub_{subprocess_idx}_{ci}"
         place_active = (st_module.session_state.get('placement_mode') and 
                        st_module.session_state.get('placing_process_idx') == place_key)
         if not place_active:
@@ -126,7 +114,7 @@ def render_children_recursive(st_module, parent_node, key_prefix, indent_level=1
                 st_module.session_state['measure_mode'] = False
                 st_module.session_state['placing_process_idx'] = place_key
                 st_module.session_state['placing_node_ref'] = child
-                st_module.session_state['ui_status_msg'] = f"Click on map to place: {child.get('name', level_name)}"
+                st_module.session_state['ui_status_msg'] = f"Click on map to place: {child.get('name', 'Sub-subprocess')}"
                 st_module.rerun()
         else:
             if cols[3].button("Done", key=f"{child_key}_place_done"):
@@ -136,21 +124,12 @@ def render_children_recursive(st_module, parent_node, key_prefix, indent_level=1
                 st_module.session_state['ui_status_msg'] = "Placement mode disabled"
                 st_module.rerun()
         
-        # Child count
-        grandchild_count = len(child.get('children', []))
-        cols[4].markdown(f"**{grandchild_count}**")
-        
-        # Add grandchild button
-        if cols[5].button("+", key=f"{child_key}_add_child", help=f"Add {child_level_name}"):
-            add_child_to_node(child, f"{child_level_name} {grandchild_count + 1}")
-            st_module.rerun()
-        
         # Delete button
-        if cols[6].button("✕", key=f"{child_key}_delete"):
-            delete_child_from_node(parent_node, ci)
+        if cols[4].button("✕", key=f"{child_key}_delete"):
+            delete_child_from_node(subprocess_node, ci)
             st_module.rerun()
         
-        # Expanded content
+        # Expanded content (Information and Streams only - no deeper children)
         if child.get('expanded', False):
             # Information toggle
             if 'info_expanded' not in child:
@@ -197,28 +176,6 @@ def render_children_recursive(st_module, parent_node, key_prefix, indent_level=1
             else:
                 for si, stream in enumerate(streams):
                     render_stream_recursive(st_module, stream, f"{child_key}_stream_{si}", child, si)
-            
-            # Recursive children section (grandchildren, great-grandchildren, etc.)
-            grandchildren = child.get('children', [])
-            if grandchildren or True:  # Always show the section
-                gc_header = st_module.columns([0.6, 0.25, 0.15])
-                gc_header[0].markdown(f"**{child_level_name}s:**")
-                gc_header[1].caption(f"({len(grandchildren)} items)")
-                
-                if gc_header[2].button("➕ Add", key=f"{child_key}_add_gc"):
-                    add_child_to_node(child, f"{child_level_name} {len(grandchildren) + 1}")
-                    st_module.rerun()
-                
-                if grandchildren:
-                    # Recursively render grandchildren
-                    render_children_recursive(
-                        st_module, child, child_key, 
-                        indent_level=indent_level + 1,
-                        process_model_dict=process_model_dict,
-                        parent_group_idx=parent_group_idx
-                    )
-                else:
-                    st_module.caption(f"No {child_level_name.lower()}s yet.")
 
 
 def render_stream_recursive(st_module, stream, stream_key, parent_node, stream_index):
@@ -1539,36 +1496,37 @@ with left:
                         if i not in st.session_state['subprocess_map_expanded']:
                             st.session_state['subprocess_map_expanded'][i] = False
                         
-                        # Sub-subprocesses header with Add button
-                        subsub_header_cols = st.columns([0.55, 0.20, 0.25])
-                        
-                        subsub_header_cols[0].markdown("**Sub-subprocesses:**")
+                        # Sub-subprocesses header (just label)
                         child_count = len(p.get('children', []))
-                        subsub_header_cols[1].caption(f"({child_count} items)")
+                        st.markdown(f"**Sub-subprocesses:** ({child_count} items)")
                         
-                        if subsub_header_cols[2].button("➕ Add", key=f"add_subsub_{i}"):
-                            add_child_to_node(p, f"Sub-subprocess {child_count + 1}")
-                            st.rerun()
-                        
-                        # Render sub-subprocesses recursively
+                        # Render sub-subprocesses (final level - no deeper)
                         if p.get('children'):
-                            render_children_recursive(st, p, f"subsub_{i}", indent_level=1, 
-                                                    process_model_dict=PROCESS_MODEL_DICT,
-                                                    parent_group_idx=g,
-                                                    parent_subprocess_idx=i)
+                            render_subsubprocesses(st, p, i, process_model_dict=PROCESS_MODEL_DICT)
                         else:
-                            st.caption("No sub-subprocesses yet. Use ➕ to add one.")
+                            st.caption("No sub-subprocesses yet.")
                         
-                        # Map expand toggle at BOTTOM (arrow that opens overlay on map)
+                        # =====================================================
+                        # BOTTOM BAR: Map toggle + Count + Add button (ALWAYS)
+                        # =====================================================
                         map_expanded = st.session_state['subprocess_map_expanded'].get(i, False)
-                        map_toggle_cols = st.columns([0.08, 0.72, 0.20])
-                        map_toggle_label = "🔽" if map_expanded else "▶️"
-                        if map_toggle_cols[0].button(map_toggle_label, key=f"map_toggle_subsub_{i}", help="Open/close area on map for sub-subprocesses"):
+                        bottom_cols = st.columns([0.12, 0.48, 0.15, 0.20])
+                        
+                        map_toggle_label = "🔽 Hide" if map_expanded else "▶️ Map"
+                        if bottom_cols[0].button(map_toggle_label, key=f"map_toggle_subsub_{i}", help="Show/hide sub-subprocesses on map"):
                             st.session_state['subprocess_map_expanded'][i] = not map_expanded
                             st.rerun()
-                        map_toggle_cols[1].caption("Show on map" if not map_expanded else "Hide from map")
-                        if map_expanded:
-                            map_toggle_cols[2].markdown("🗺️", help="Overlay visible on map")
+                        
+                        status_text = "🗺️ Showing on map" if map_expanded else "Click to show on map"
+                        bottom_cols[1].caption(status_text)
+                        
+                        # Count
+                        bottom_cols[2].markdown(f"**{child_count}**")
+                        
+                        # Add button
+                        if bottom_cols[3].button("➕ Add", key=f"add_subsub_{i}", help="Add sub-subprocess"):
+                            add_child_to_node(p, f"Sub-subprocess {child_count + 1}")
+                            st.rerun()
                         
                     if local_idx < len(g_list) - 1:
                         st.markdown("<div style='height:1px; background:#888888; opacity:0.5; margin:4px 0;'></div>", unsafe_allow_html=True)
