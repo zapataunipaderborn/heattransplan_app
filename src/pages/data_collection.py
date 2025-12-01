@@ -2414,154 +2414,6 @@ div.leaflet-container {background: #f2f2f3 !important;}
                     else:
                         draw.text((ct_x, ct_y), label, fill=text_color)
 
-                # Fifth pass: draw sub-subprocess overlays for expanded subprocesses
-                subprocess_map_expanded = st.session_state.get('subprocess_map_expanded', {})
-                for subprocess_idx, is_expanded in subprocess_map_expanded.items():
-                    if not is_expanded:
-                        continue
-                    
-                    subprocess_idx_int = int(subprocess_idx) if isinstance(subprocess_idx, str) else subprocess_idx
-                    
-                    # Get subprocess position
-                    if subprocess_idx_int >= len(st.session_state['processes']):
-                        continue
-                    
-                    subprocess = st.session_state['processes'][subprocess_idx_int]
-                    sub_lat = subprocess.get('lat')
-                    sub_lon = subprocess.get('lon')
-                    
-                    # Draw overlay even if subprocess has no coordinates (centered on screen)
-                    try:
-                        # Full screen overlay like process overlay, but slightly smaller (80% instead of 90%)
-                        sub_overlay_w = int(w * 0.80)
-                        sub_overlay_h = int(h * 0.80)
-                        
-                        # Always center in the middle of the screen
-                        center_px = w // 2
-                        center_py = h // 2
-                        
-                        sub_overlay_x0 = int(center_px - sub_overlay_w / 2)
-                        sub_overlay_y0 = int(center_py - sub_overlay_h / 2)
-                        sub_overlay_x1 = sub_overlay_x0 + sub_overlay_w
-                        sub_overlay_y1 = sub_overlay_y0 + sub_overlay_h
-                        
-                        # Ensure overlay stays within map bounds with some padding
-                        margin = 25
-                        sub_overlay_x0 = max(margin, sub_overlay_x0)
-                        sub_overlay_y0 = max(margin, sub_overlay_y0)
-                        sub_overlay_x1 = min(w - margin, sub_overlay_x1)
-                        sub_overlay_y1 = min(h - margin, sub_overlay_y1)
-                        
-                        # Draw white overlay with subtle border (similar to process overlay but white)
-                        draw.rectangle([sub_overlay_x0, sub_overlay_y0, sub_overlay_x1, sub_overlay_y1], 
-                                       fill=(255, 255, 255, 245),
-                                       outline=(150, 150, 150, 220), 
-                                       width=2)
-                        
-                        # Add label in top-left corner
-                        subprocess_name = subprocess.get('name', f'Subprocess {subprocess_idx_int + 1}')
-                        sub_overlay_label = f"Sub-subprocess Area: {subprocess_name}"
-                        if font:
-                            label_bbox = draw.textbbox((0, 0), sub_overlay_label, font=font)
-                            label_w = label_bbox[2] - label_bbox[0]
-                            label_h = label_bbox[3] - label_bbox[1]
-                        else:
-                            label_w = len(sub_overlay_label) * 6
-                            label_h = 10
-                        
-                        label_x = sub_overlay_x0 + 15
-                        label_y = sub_overlay_y0 + 12
-                        
-                        # Subtle background for label
-                        draw.rectangle([label_x-5, label_y-3, label_x+label_w+5, label_y+label_h+3], 
-                                     fill=(240, 240, 240, 200), 
-                                     outline=(180, 180, 180, 150), 
-                                     width=1)
-                        
-                        if font:
-                            draw.text((label_x, label_y), sub_overlay_label, fill=(40, 40, 40, 255), font=font)
-                        else:
-                            draw.text((label_x, label_y), sub_overlay_label, fill=(40, 40, 40, 255))
-                        
-                        # Draw sub-subprocess boxes inside the overlay
-                        children = subprocess.get('children', [])
-                        if children:
-                            n_children = len(children)
-                            usable_w = sub_overlay_x1 - sub_overlay_x0 - 60
-                            usable_h = sub_overlay_y1 - sub_overlay_y0 - 80
-                            
-                            # Calculate grid layout
-                            cols = min(n_children, 4)
-                            rows = (n_children + cols - 1) // cols
-                            
-                            child_box_w = min(150, usable_w // cols - 20)
-                            child_box_h = min(60, usable_h // rows - 20)
-                            
-                            # Starting position for grid
-                            grid_start_x = sub_overlay_x0 + 30
-                            grid_start_y = sub_overlay_y0 + 50
-                            
-                            for ci, child in enumerate(children):
-                                col_idx = ci % cols
-                                row_idx = ci // cols
-                                
-                                # Default grid position
-                                cx = grid_start_x + col_idx * (child_box_w + 25) + child_box_w // 2
-                                cy = grid_start_y + row_idx * (child_box_h + 25) + child_box_h // 2
-                                
-                                # Check if child has lat/lon - if so, draw at that location instead
-                                child_lat = child.get('lat')
-                                child_lon = child.get('lon')
-                                if child_lat and child_lon and str(child_lat).strip() and str(child_lon).strip():
-                                    try:
-                                        child_lat_f = float(child_lat)
-                                        child_lon_f = float(child_lon)
-                                        cx, cy = snapshot_lonlat_to_pixel(
-                                            child_lon_f, child_lat_f,
-                                            (st.session_state['map_center'][1], st.session_state['map_center'][0]),
-                                            st.session_state['map_zoom'], w, h
-                                        )
-                                    except (ValueError, TypeError):
-                                        pass
-                                
-                                child_name = child.get('name', f'Sub-sub {ci + 1}')
-                                child_scale = float(child.get('box_scale', 0.8) or 0.8)
-                                
-                                # Calculate box dimensions
-                                if font:
-                                    name_bbox = draw.textbbox((0, 0), child_name, font=font)
-                                    name_w = name_bbox[2] - name_bbox[0]
-                                    name_h = name_bbox[3] - name_bbox[1]
-                                else:
-                                    name_w = len(child_name) * 6
-                                    name_h = 10
-                                
-                                box_w_child = int(name_w * child_scale + 24)
-                                box_h_child = int(name_h * child_scale + 18)
-                                
-                                cx0 = int(cx - box_w_child // 2)
-                                cy0 = int(cy - box_h_child // 2)
-                                cx1 = cx0 + box_w_child
-                                cy1 = cy0 + box_h_child
-                                
-                                # Draw child box with purple/violet color (to distinguish from subprocesses)
-                                draw.rectangle([cx0, cy0, cx1, cy1], 
-                                               fill=(245, 230, 255, 245),  # Light purple
-                                               outline=(128, 0, 128, 255),  # Purple border
-                                               width=2)
-                                
-                                # Center text
-                                text_x = int(cx - name_w // 2)
-                                text_y = int(cy - name_h // 2)
-                                
-                                if font:
-                                    draw.text((text_x, text_y), child_name, fill=(75, 0, 75, 255), font=font)
-                                else:
-                                    draw.text((text_x, text_y), child_name, fill=(75, 0, 75, 255))
-                        
-                    except (ValueError, TypeError):
-                        continue
-
                 # Sixth pass: draw subprocess overlays for expanded process groups
                 process_subprocess_map_expanded = st.session_state.get('process_subprocess_map_expanded', {})
                 for proc_group_idx, is_expanded in process_subprocess_map_expanded.items():
@@ -2824,6 +2676,215 @@ div.leaflet-container {background: #f2f2f3 !important;}
                         _label_centered(top_text, sx, inbound_top - 6, above=True)
                         _label_centered(bot_text, sx, outbound_bottom + 6, above=False)
                 
+                # Seventh pass: draw sub-subprocess overlays for expanded subprocesses (LAST - on top of everything)
+                subprocess_map_expanded = st.session_state.get('subprocess_map_expanded', {})
+                for subprocess_idx, is_expanded in subprocess_map_expanded.items():
+                    if not is_expanded:
+                        continue
+                    
+                    subprocess_idx_int = int(subprocess_idx) if isinstance(subprocess_idx, str) else subprocess_idx
+                    
+                    # Get subprocess position
+                    if subprocess_idx_int >= len(st.session_state['processes']):
+                        continue
+                    
+                    subprocess = st.session_state['processes'][subprocess_idx_int]
+                    sub_lat = subprocess.get('lat')
+                    sub_lon = subprocess.get('lon')
+                    
+                    # Draw overlay even if subprocess has no coordinates (centered on screen)
+                    try:
+                        # Full screen overlay like process overlay, but slightly smaller (80% instead of 90%)
+                        sub_overlay_w = int(w * 0.80)
+                        sub_overlay_h = int(h * 0.80)
+                        
+                        # Always center in the middle of the screen
+                        center_px = w // 2
+                        center_py = h // 2
+                        
+                        sub_overlay_x0 = int(center_px - sub_overlay_w / 2)
+                        sub_overlay_y0 = int(center_py - sub_overlay_h / 2)
+                        sub_overlay_x1 = sub_overlay_x0 + sub_overlay_w
+                        sub_overlay_y1 = sub_overlay_y0 + sub_overlay_h
+                        
+                        # Ensure overlay stays within map bounds with some padding
+                        margin = 25
+                        sub_overlay_x0 = max(margin, sub_overlay_x0)
+                        sub_overlay_y0 = max(margin, sub_overlay_y0)
+                        sub_overlay_x1 = min(w - margin, sub_overlay_x1)
+                        sub_overlay_y1 = min(h - margin, sub_overlay_y1)
+                        
+                        # Draw white overlay with subtle border (similar to process overlay but white)
+                        draw.rectangle([sub_overlay_x0, sub_overlay_y0, sub_overlay_x1, sub_overlay_y1], 
+                                       fill=(255, 255, 255, 245),
+                                       outline=(150, 150, 150, 220), 
+                                       width=2)
+                        
+                        # Add label in top-left corner
+                        subprocess_name = subprocess.get('name', f'Subprocess {subprocess_idx_int + 1}')
+                        sub_overlay_label = f"Sub-subprocess Area: {subprocess_name}"
+                        if font:
+                            label_bbox = draw.textbbox((0, 0), sub_overlay_label, font=font)
+                            label_w = label_bbox[2] - label_bbox[0]
+                            label_h = label_bbox[3] - label_bbox[1]
+                        else:
+                            label_w = len(sub_overlay_label) * 6
+                            label_h = 10
+                        
+                        label_x = sub_overlay_x0 + 15
+                        label_y = sub_overlay_y0 + 12
+                        
+                        # Subtle background for label
+                        draw.rectangle([label_x-5, label_y-3, label_x+label_w+5, label_y+label_h+3], 
+                                     fill=(240, 240, 240, 200), 
+                                     outline=(180, 180, 180, 150), 
+                                     width=1)
+                        
+                        if font:
+                            draw.text((label_x, label_y), sub_overlay_label, fill=(40, 40, 40, 255), font=font)
+                        else:
+                            draw.text((label_x, label_y), sub_overlay_label, fill=(40, 40, 40, 255))
+                        
+                        # Draw sub-subprocess boxes inside the overlay
+                        children = subprocess.get('children', [])
+                        if children:
+                            n_children = len(children)
+                            usable_w = sub_overlay_x1 - sub_overlay_x0 - 60
+                            usable_h = sub_overlay_y1 - sub_overlay_y0 - 80
+                            
+                            # Calculate grid layout
+                            cols = min(n_children, 4)
+                            rows = (n_children + cols - 1) // cols
+                            
+                            child_box_w = min(150, usable_w // cols - 20)
+                            child_box_h = min(60, usable_h // rows - 20)
+                            
+                            # Starting position for grid
+                            grid_start_x = sub_overlay_x0 + 30
+                            grid_start_y = sub_overlay_y0 + 50
+                            
+                            for ci, child in enumerate(children):
+                                col_idx = ci % cols
+                                row_idx = ci // cols
+                                
+                                # Default grid position
+                                cx = grid_start_x + col_idx * (child_box_w + 25) + child_box_w // 2
+                                cy = grid_start_y + row_idx * (child_box_h + 25) + child_box_h // 2
+                                
+                                # Check if child has lat/lon - if so, draw at that location instead
+                                child_lat = child.get('lat')
+                                child_lon = child.get('lon')
+                                if child_lat and child_lon and str(child_lat).strip() and str(child_lon).strip():
+                                    try:
+                                        child_lat_f = float(child_lat)
+                                        child_lon_f = float(child_lon)
+                                        cx, cy = snapshot_lonlat_to_pixel(
+                                            child_lon_f, child_lat_f,
+                                            (st.session_state['map_center'][1], st.session_state['map_center'][0]),
+                                            st.session_state['map_zoom'], w, h
+                                        )
+                                    except (ValueError, TypeError):
+                                        pass
+                                
+                                child_name = child.get('name', f'Sub-sub {ci + 1}')
+                                child_scale = float(child.get('box_scale', 0.8) or 0.8)
+                                
+                                # Calculate box dimensions
+                                if font:
+                                    name_bbox = draw.textbbox((0, 0), child_name, font=font)
+                                    name_w = name_bbox[2] - name_bbox[0]
+                                    name_h = name_bbox[3] - name_bbox[1]
+                                else:
+                                    name_w = len(child_name) * 6
+                                    name_h = 10
+                                
+                                box_w_child = int(name_w * child_scale + 24)
+                                box_h_child = int(name_h * child_scale + 18)
+                                
+                                cx0 = int(cx - box_w_child // 2)
+                                cy0 = int(cy - box_h_child // 2)
+                                cx1 = cx0 + box_w_child
+                                cy1 = cy0 + box_h_child
+                                
+                                # Draw child box with purple/violet color (to distinguish from subprocesses)
+                                draw.rectangle([cx0, cy0, cx1, cy1], 
+                                               fill=(245, 230, 255, 245),  # Light purple
+                                               outline=(128, 0, 128, 255),  # Purple border
+                                               width=2)
+                                
+                                # Center text
+                                text_x = int(cx - name_w // 2)
+                                text_y = int(cy - name_h // 2)
+                                
+                                if font:
+                                    draw.text((text_x, text_y), child_name, fill=(75, 0, 75, 255), font=font)
+                                else:
+                                    draw.text((text_x, text_y), child_name, fill=(75, 0, 75, 255))
+                                
+                                # Draw stream arrows for sub-subprocess
+                                child_streams = child.get('streams', []) or []
+                                if child_streams:
+                                    child_arrow_len = 35  # slightly shorter arrows for sub-subprocesses
+                                    child_stream_spacing = 40
+                                    n_child_streams = len(child_streams)
+                                    child_box_center_x = (cx0 + cx1) / 2
+                                    
+                                    for cs_i, cs in enumerate(child_streams):
+                                        cs_offset = (cs_i - (n_child_streams - 1)/2) * child_stream_spacing
+                                        cs_x = int(child_box_center_x + cs_offset)
+                                        
+                                        # Parse temperatures from stream
+                                        cs_tin_raw = cs.get('temp_in', '')
+                                        cs_tout_raw = cs.get('temp_out', '')
+                                        # Also check values dict for property-based streams
+                                        if not cs_tin_raw and cs.get('properties', {}).get('prop1') == 'Tin':
+                                            cs_tin_raw = cs.get('values', {}).get('val1', '')
+                                        if not cs_tout_raw and cs.get('properties', {}).get('prop2') == 'Tout':
+                                            cs_tout_raw = cs.get('values', {}).get('val2', '')
+                                        
+                                        try:
+                                            cs_tin_val = float(str(cs_tin_raw).strip())
+                                        except (ValueError, TypeError):
+                                            cs_tin_val = None
+                                        try:
+                                            cs_tout_val = float(str(cs_tout_raw).strip())
+                                        except (ValueError, TypeError):
+                                            cs_tout_val = None
+                                        
+                                        # Color logic
+                                        if cs_tin_val is not None and cs_tout_val is not None:
+                                            cs_is_cooling = cs_tin_val > cs_tout_val
+                                            cs_col = (200, 25, 25, 255) if cs_is_cooling else (25, 80, 200, 255)
+                                        else:
+                                            cs_col = (90, 90, 90, 255)
+                                        
+                                        # Inbound arrow (above box pointing downward INTO box)
+                                        cs_inbound_bottom = cy0 - 2
+                                        cs_inbound_top = cs_inbound_bottom - child_arrow_len
+                                        # Draw arrow line
+                                        draw.line([(cs_x, cs_inbound_top), (cs_x, cs_inbound_bottom)], fill=cs_col, width=3)
+                                        # Draw arrow head
+                                        draw.polygon([
+                                            (cs_x, cs_inbound_bottom),
+                                            (cs_x - 5, cs_inbound_bottom - 8),
+                                            (cs_x + 5, cs_inbound_bottom - 8)
+                                        ], fill=cs_col)
+                                        
+                                        # Outbound arrow (below box pointing downward AWAY from box)
+                                        cs_outbound_top = cy1 + 2
+                                        cs_outbound_bottom = cs_outbound_top + child_arrow_len
+                                        # Draw arrow line
+                                        draw.line([(cs_x, cs_outbound_top), (cs_x, cs_outbound_bottom)], fill=cs_col, width=3)
+                                        # Draw arrow head
+                                        draw.polygon([
+                                            (cs_x, cs_outbound_bottom),
+                                            (cs_x - 5, cs_outbound_bottom - 8),
+                                            (cs_x + 5, cs_outbound_bottom - 8)
+                                        ], fill=cs_col)
+                        
+                    except (ValueError, TypeError):
+                        continue
+
                 # Present snapshot full width (base selector moved to top bar)
                 img = base_img  # for coordinate capture
                 coords = streamlit_image_coordinates(img, key="meas_img", width=w)
