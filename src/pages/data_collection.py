@@ -2086,9 +2086,8 @@ div.leaflet-container {background: #f2f2f3 !important;}
                     # Convert group_idx to int if it's a string (happens after JSON load)
                     group_idx = int(group_idx) if isinstance(group_idx, str) else group_idx
                     if group_idx < len(st.session_state.get('proc_group_names', [])):
-                        # Only show main process rectangle when group is collapsed
-                        if (group_idx < len(group_expanded) and group_expanded[group_idx]):
-                            continue  # Skip - group is expanded, grey overlay will be shown instead
+                        # Always show main process rectangle (green box) on the map
+                        # It should remain visible regardless of UI expansion state
                             
                         lat = coords_data.get('lat')
                         lon = coords_data.get('lon')
