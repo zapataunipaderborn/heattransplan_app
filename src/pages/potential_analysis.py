@@ -104,23 +104,48 @@ else:
                     label_visibility="collapsed"
                 )
                 st.session_state['selected_items'][stream_key] = stream_selected
-                stream_cols[1].write(f"Stream {stream_idx + 1}")
-                
                 # Display stream data inline
-                stream_info = []
-                if stream.get('temp_in'):
-                    stream_info.append(f"Tin:{stream['temp_in']}")
-                if stream.get('temp_out'):
-                    stream_info.append(f"Tout:{stream['temp_out']}")
-                if stream.get('mdot'):
-                    stream_info.append(f"ṁ:{stream['mdot']}")
-                if stream.get('cp'):
-                    stream_info.append(f"cp:{stream['cp']}")
+                stream_name = stream.get('name', f'Stream {stream_idx + 1}')
+                stream_cols[1].write(stream_name)
                 
-                if stream_info:
-                    stream_cols[2].caption(' | '.join(stream_info))
+                # Handle new stream structure with flexible properties
+                properties = stream.get('properties', [])
+                values = stream.get('values', [])
+                
+                if properties and values and len(properties) == len(values):
+                    # New structure: display property-value pairs
+                    stream_info = []
+                    for prop, val in zip(properties, values):
+                        if val:  # Only show non-empty values
+                            if prop in ['Tin', 'Tout']:
+                                stream_info.append(f"{prop}:{val}")
+                            elif prop == 'ṁ':
+                                stream_info.append(f"ṁ:{val}")
+                            elif prop == 'cp':
+                                stream_info.append(f"cp:{val}")
+                            else:
+                                stream_info.append(f"{prop}:{val}")
+                    
+                    if stream_info:
+                        stream_cols[2].caption(' | '.join(stream_info))
+                    else:
+                        stream_cols[2].caption("(no data)")
                 else:
-                    stream_cols[2].caption("(no data)")
+                    # Legacy structure: fallback to old fields
+                    stream_info = []
+                    if stream.get('temp_in'):
+                        stream_info.append(f"Tin:{stream['temp_in']}")
+                    if stream.get('temp_out'):
+                        stream_info.append(f"Tout:{stream['temp_out']}")
+                    if stream.get('mdot'):
+                        stream_info.append(f"ṁ:{stream['mdot']}")
+                    if stream.get('cp'):
+                        stream_info.append(f"cp:{stream['cp']}")
+                    
+                    if stream_info:
+                        stream_cols[2].caption(' | '.join(stream_info))
+                    else:
+                        stream_cols[2].caption("(no data)")
         
         st.divider()
     

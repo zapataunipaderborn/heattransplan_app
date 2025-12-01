@@ -86,7 +86,29 @@ def delete_process(session_state, idx):
 
 def add_stream_to_process(session_state, pidx):
     if 0 <= pidx < len(session_state['processes']):
-        session_state['processes'][pidx]['streams'].append({'mdot':'','temp_in':'','temp_out':'','cp':''})
+        stream_count = len(session_state['processes'][pidx]['streams'])
+        new_stream = {
+            'name': f'Stream {stream_count + 1}',
+            'type': 'product',
+            'properties': {
+                'prop1': 'Tin',
+                'prop2': 'Tout', 
+                'prop3': 'ṁ',
+                'prop4': 'cp'
+            },
+            'values': {
+                'val1': '',
+                'val2': '',
+                'val3': '',
+                'val4': ''
+            },
+            # Legacy fields for backward compatibility
+            'mdot': '',
+            'temp_in': '',
+            'temp_out': '',
+            'cp': ''
+        }
+        session_state['processes'][pidx]['streams'].append(new_stream)
 
 def delete_stream_from_process(session_state, pidx, sidx):
     if 0 <= pidx < len(session_state['processes']):

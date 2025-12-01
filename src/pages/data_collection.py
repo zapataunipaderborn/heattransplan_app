@@ -235,11 +235,38 @@ def export_to_csv():
         if streams:
             # One row per stream
             for stream_idx, stream in enumerate(streams):
-                stream_name = f"Stream {stream_idx + 1}"
-                stream_tin = stream.get('temp_in', '')
-                stream_tout = stream.get('temp_out', '')
-                stream_mdot = stream.get('mdot', '')
-                stream_cp = stream.get('cp', '')
+                stream_name = stream.get('name', f"Stream {stream_idx + 1}")
+                stream_type = stream.get('type', 'product')
+                
+                # Handle new stream structure with flexible properties
+                properties = stream.get('properties', [])
+                values = stream.get('values', [])
+                
+                if properties and values and len(properties) == len(values):
+                    # New structure: create columns for each property-value pair
+                    prop_value_str = "; ".join([f"{prop}:{val}" for prop, val in zip(properties, values)])
+                    
+                    # Extract legacy fields for backward compatibility
+                    tin = ''
+                    tout = ''
+                    mdot = ''
+                    cp = ''
+                    for prop, val in zip(properties, values):
+                        if prop == 'Tin':
+                            tin = val
+                        elif prop == 'Tout':
+                            tout = val
+                        elif prop == 'ṁ':
+                            mdot = val
+                        elif prop == 'cp':
+                            cp = val
+                else:
+                    # Legacy structure: fallback to old fields
+                    tin = stream.get('temp_in', '')
+                    tout = stream.get('temp_out', '')
+                    mdot = stream.get('mdot', '')
+                    cp = stream.get('cp', '')
+                    prop_value_str = f"Tin:{tin}; Tout:{tout}; ṁ:{mdot}; cp:{cp}"
                 
                 writer.writerow([
                     process_name,
@@ -249,10 +276,10 @@ def export_to_csv():
                     process_hours,
                     next_connection,
                     stream_name,
-                    stream_tin,
-                    stream_tout,
-                    stream_mdot,
-                    stream_cp,
+                    tin,
+                    tout,
+                    mdot,
+                    cp,
                     product_tin,
                     product_tout,
                     product_mdot,
@@ -1177,15 +1204,93 @@ with left:
                         if not streams:
                             st.caption("No streams yet. Use ➕ to add one.")
                         for si, s in enumerate(streams):
-                            lbl_col, sc1,sc2,sc3,sc4,sc5 = st.columns([0.5,1,1,1,1,0.6])
-                            lbl_col.markdown(f"**S{si+1}**")
-                            s['temp_in'] = sc1.text_input("Tin", value=str(s.get('temp_in','')), key=f"s_tin_{i}_{si}")
-                            s['temp_out'] = sc2.text_input("Tout", value=str(s.get('temp_out','')), key=f"s_tout_{i}_{si}")
-                            s['mdot'] = sc3.text_input("ṁ", value=str(s.get('mdot','')), key=f"s_mdot_{i}_{si}")
-                            s['cp'] = sc4.text_input("cp", value=str(s.get('cp','')), key=f"s_cp_{i}_{si}")
-                            if sc5.button("✕", key=f"del_stream_{i}_{si}"):
+                            # Ensure stream has name and type fields
+                            if 'name' not in s:
+                                s['name'] = f"Stream {si+1}"
+                            if 'type' not in s:
+                                s['type'] = "product"
+                            
+                            # Stream header row: Name | Type | Delete
+                            stream_header_cols = st.columns([1.5, 1, 0.5])
+                            s['name'] = stream_header_cols[0].text_input(
+                                f"Stream {si+1} name", 
+                                value=s.get('name', f"Stream {si+1}"), 
+                                key=f"s_name_{i}_{si}",
+                                label_visibility="collapsed",
+                                placeholder=f"Stream {si+1}"
+                            )
+                            stream_types = ["product", "steam", "air", "water"]
+                            current_type = s.get('type', 'product')
+                            if current_type not in stream_types:
+                                current_type = 'product'
+                            s['type'] = stream_header_cols[1].selectbox(
+                                "Type",
+                                options=stream_types,
+                                index=stream_types.index(current_type),
+                                key=f"s_type_{i}_{si}",
+                                label_visibility="collapsed"
+                            )
+                            if stream_header_cols[2].button("✕", key=f"del_stream_{i}_{si}"):
                                 delete_stream_from_process(st.session_state, i, si)
                                 st.rerun()
+                            
+                            # Property selection row: 4 columns with property dropdown + value input
+                            prop_options = ["Tin", "Tout", "ṁ", "cp", "Water Content In", "Water Content Out", "Density", "Pressure", "Notes"]
+                            
+                            # Initialize property mappings if not exist
+                            if 'properties' not in s:
+                                s['properties'] = {
+                                    'prop1': 'Tin',
+                                    'prop2': 'Tout', 
+                                    'prop3': 'ṁ',
+                                    'prop4': 'cp'
+                                }
+                            if 'values' not in s:
+                                s['values'] = {
+                                    'val1': s.get('temp_in', ''),
+                                    'val2': s.get('temp_out', ''),
+                                    'val3': s.get('mdot', ''),
+                                    'val4': s.get('cp', '')
+                                }
+                            
+                            prop_cols = st.columns([1, 1, 1, 1])
+                            for pi, (prop_key, val_key) in enumerate([('prop1', 'val1'), ('prop2', 'val2'), ('prop3', 'val3'), ('prop4', 'val4')]):
+                                with prop_cols[pi]:
+                                    current_prop = s['properties'].get(prop_key, prop_options[pi])
+                                    if current_prop not in prop_options:
+                                        current_prop = prop_options[pi]
+                                    
+                                    s['properties'][prop_key] = st.selectbox(
+                                        f"Property {pi+1}",
+                                        options=prop_options,
+                                        index=prop_options.index(current_prop),
+                                        key=f"s_prop_{pi}_{i}_{si}",
+                                        label_visibility="collapsed"
+                                    )
+                                    
+                                    # Show input based on selected property
+                                    selected_prop = s['properties'][prop_key]
+                                    if selected_prop == "Notes":
+                                        s['values'][val_key] = st.text_area(
+                                            f"Value {pi+1}",
+                                            value=str(s['values'].get(val_key, '')),
+                                            key=f"s_val_{pi}_{i}_{si}",
+                                            height=60,
+                                            label_visibility="collapsed"
+                                        )
+                                    else:
+                                        s['values'][val_key] = st.text_input(
+                                            f"Value {pi+1}",
+                                            value=str(s['values'].get(val_key, '')),
+                                            key=f"s_val_{pi}_{i}_{si}",
+                                            label_visibility="collapsed"
+                                        )
+                            
+                            # Update legacy fields for backward compatibility
+                            s['temp_in'] = s['values'].get('val1', '') if s['properties'].get('prop1') == 'Tin' else s.get('temp_in', '')
+                            s['temp_out'] = s['values'].get('val2', '') if s['properties'].get('prop2') == 'Tout' else s.get('temp_out', '')
+                            s['mdot'] = s['values'].get('val3', '') if s['properties'].get('prop3') == 'ṁ' else s.get('mdot', '')
+                            s['cp'] = s['values'].get('val4', '') if s['properties'].get('prop4') == 'cp' else s.get('cp', '')
                     if local_idx < len(g_list) - 1:
                         st.markdown("<div style='height:1px; background:#888888; opacity:0.5; margin:4px 0;'></div>", unsafe_allow_html=True)
                 # Bottom separator after expanded group
@@ -1378,11 +1483,36 @@ div.leaflet-container {background: #f2f2f3 !important;}
                                         if streams:
                                             popup_html += f"<small><b>Streams ({len(streams)}):</b></small><br>"
                                             for s_idx, stream in enumerate(streams):
-                                                tin = stream.get('temp_in', '?')
-                                                tout = stream.get('temp_out', '?')
-                                                mdot = stream.get('mdot', '?')
-                                                cp = stream.get('cp', '?')
-                                                popup_html += f"<small>&nbsp;&nbsp;• Stream {s_idx+1}: Tin={tin}°C, Tout={tout}°C, ṁ={mdot}, cp={cp}</small><br>"
+                                                # Handle new stream structure with flexible properties
+                                                stream_name = stream.get('name', f'Stream {s_idx+1}')
+                                                stream_type = stream.get('type', 'product')
+                                                
+                                                # Check if using new structure (properties and values lists)
+                                                properties = stream.get('properties', [])
+                                                values = stream.get('values', [])
+                                                
+                                                if properties and values and len(properties) == len(values):
+                                                    # New structure: display name, type, and property-value pairs
+                                                    popup_html += f"<small>&nbsp;&nbsp;• {stream_name} ({stream_type}): "
+                                                    prop_pairs = []
+                                                    for prop, val in zip(properties, values):
+                                                        if prop in ['Tin', 'Tout']:
+                                                            prop_pairs.append(f"{prop}={val}°C")
+                                                        elif prop == 'ṁ':
+                                                            prop_pairs.append(f"ṁ={val}")
+                                                        elif prop == 'cp':
+                                                            prop_pairs.append(f"cp={val}")
+                                                        else:
+                                                            prop_pairs.append(f"{prop}={val}")
+                                                    popup_html += ", ".join(prop_pairs)
+                                                    popup_html += "</small><br>"
+                                                else:
+                                                    # Legacy structure: fallback to old fields
+                                                    tin = stream.get('temp_in', '?')
+                                                    tout = stream.get('temp_out', '?')
+                                                    mdot = stream.get('mdot', '?')
+                                                    cp = stream.get('cp', '?')
+                                                    popup_html += f"<small>&nbsp;&nbsp;• {stream_name} ({stream_type}): Tin={tin}°C, Tout={tout}°C, ṁ={mdot}, cp={cp}</small><br>"
                                         
                                         popup_html += "</div>"
                                 
@@ -2235,11 +2365,34 @@ div.leaflet-container {background: #f2f2f3 !important;}
                                         if streams:
                                             st.caption(f"**Streams ({len(streams)}):**")
                                             for s_idx, stream in enumerate(streams):
-                                                tin = stream.get('temp_in', '?')
-                                                tout = stream.get('temp_out', '?')
-                                                mdot = stream.get('mdot', '?')
-                                                cp = stream.get('cp', '?')
-                                                st.caption(f"  • Stream {s_idx+1}: Tin={tin}°C, Tout={tout}°C, ṁ={mdot}, cp={cp}")
+                                                # Handle new stream structure with flexible properties
+                                                stream_name = stream.get('name', f'Stream {s_idx+1}')
+                                                stream_type = stream.get('type', 'product')
+                                                
+                                                # Check if using new structure (properties and values lists)
+                                                properties = stream.get('properties', [])
+                                                values = stream.get('values', [])
+                                                
+                                                if properties and values and len(properties) == len(values):
+                                                    # New structure: display name, type, and property-value pairs
+                                                    prop_pairs = []
+                                                    for prop, val in zip(properties, values):
+                                                        if prop in ['Tin', 'Tout']:
+                                                            prop_pairs.append(f"{prop}={val}°C")
+                                                        elif prop == 'ṁ':
+                                                            prop_pairs.append(f"ṁ={val}")
+                                                        elif prop == 'cp':
+                                                            prop_pairs.append(f"cp={val}")
+                                                        else:
+                                                            prop_pairs.append(f"{prop}={val}")
+                                                    st.caption(f"  • {stream_name} ({stream_type}): {', '.join(prop_pairs)}")
+                                                else:
+                                                    # Legacy structure: fallback to old fields
+                                                    tin = stream.get('temp_in', '?')
+                                                    tout = stream.get('temp_out', '?')
+                                                    mdot = stream.get('mdot', '?')
+                                                    cp = stream.get('cp', '?')
+                                                    st.caption(f"  • {stream_name} ({stream_type}): Tin={tin}°C, Tout={tout}°C, ṁ={mdot}, cp={cp}")
                                         
                                         st.markdown("---")
                             else:
