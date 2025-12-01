@@ -1164,10 +1164,34 @@ with left:
                         # Store as comma-separated names  
                         st.session_state['proc_group_next'][g] = ", ".join(selected) if selected else ''
                 
-                # Subprocesses section with Add subprocess button
-                sub_header_cols = st.columns([0.7, 0.3])
+                # Initialize map_expanded state for this process group (controls subprocess overlay on map)
+                if 'process_subprocess_map_expanded' not in st.session_state:
+                    st.session_state['process_subprocess_map_expanded'] = {}
+                if g not in st.session_state['process_subprocess_map_expanded']:
+                    st.session_state['process_subprocess_map_expanded'][g] = False
+                
+                # Subprocesses section with Map toggle + Count + Add subprocess button
+                subprocess_count = len(g_list)
+                subprocess_map_exp = st.session_state['process_subprocess_map_expanded'].get(g, False)
+                
+                sub_header_cols = st.columns([0.40, 0.12, 0.08, 0.20, 0.20])
                 sub_header_cols[0].markdown("**Subprocesses:**")
-                if sub_header_cols[1].button("Add subprocess", key=f"add_proc_group_{g}"):
+                
+                # Map toggle button
+                subprocess_map_toggle_label = "🔽 Hide" if subprocess_map_exp else "▶️ Map"
+                if sub_header_cols[1].button(subprocess_map_toggle_label, key=f"map_toggle_subprocess_{g}", help="Show/hide subprocesses on map"):
+                    st.session_state['process_subprocess_map_expanded'][g] = not subprocess_map_exp
+                    st.rerun()
+                
+                # Count
+                sub_header_cols[2].markdown(f"**{subprocess_count}**")
+                
+                # Status indicator
+                if subprocess_map_exp:
+                    sub_header_cols[3].caption("🗺️ On map")
+                
+                # Add button
+                if sub_header_cols[4].button("➕ Add", key=f"add_proc_group_{g}", help="Add subprocess"):
                     add_process(st.session_state)
                     new_idx = len(st.session_state['processes']) - 1
                     g_list.append(new_idx)
@@ -2131,12 +2155,13 @@ div.leaflet-container {background: #f2f2f3 !important;}
                                 continue
                 
                 # Second pass: draw large grey overlays for expanded processes ABOVE main processes
+                # Now controlled by process_subprocess_map_expanded (the Map toggle button), not proc_group_expanded
+                process_subprocess_map_exp = st.session_state.get('process_subprocess_map_expanded', {})
                 for group_idx, coords_data in group_coords.items():
                     # Convert group_idx to int if it's a string (happens after JSON load)
                     group_idx = int(group_idx) if isinstance(group_idx, str) else group_idx
-                    # Only draw overlay if process is expanded
-                    if (group_idx < len(group_expanded) and 
-                        group_expanded[group_idx]):
+                    # Only draw overlay if the Map toggle is enabled for this process group
+                    if process_subprocess_map_exp.get(group_idx, False):
                         try:
                             # Always use fixed size overlay centered in screen
                             # Fixed size: 90% width, 90% height
@@ -2196,19 +2221,18 @@ div.leaflet-container {background: #f2f2f3 !important;}
                         except (ValueError, TypeError):
                             continue
                 
-                # Third pass: draw subprocesses ABOVE grey overlay (only for expanded groups)
+                # Third pass: draw subprocesses ABOVE grey overlay (only when Map toggle is enabled)
                 for i, p in enumerate(st.session_state['processes']):
                     lat = p.get('lat'); lon = p.get('lon')
                     if lat in (None, "", "None") or lon in (None, "", "None"):
                         continue
                     
-                    # Check if this subprocess's parent group is expanded
+                    # Check if this subprocess's parent group has Map toggle enabled
                     parent_group_idx = subprocess_to_group.get(i)
                     if parent_group_idx is not None:
-                        # Only show subprocess if parent group is expanded
-                        if (parent_group_idx >= len(group_expanded) or 
-                            not group_expanded[parent_group_idx]):
-                            continue  # Skip this subprocess - parent group is collapsed
+                        # Only show subprocess if parent group's Map toggle is ON
+                        if not process_subprocess_map_exp.get(parent_group_idx, False):
+                            continue  # Skip this subprocess - Map toggle is off
                     
                     try:
                         lat_f = float(lat); lon_f = float(lon)
@@ -2535,6 +2559,157 @@ div.leaflet-container {background: #f2f2f3 !important;}
                                     draw.text((text_x, text_y), child_name, fill=(75, 0, 75, 255), font=font)
                                 else:
                                     draw.text((text_x, text_y), child_name, fill=(75, 0, 75, 255))
+                        
+                    except (ValueError, TypeError):
+                        continue
+
+                # Sixth pass: draw subprocess overlays for expanded process groups
+                process_subprocess_map_expanded = st.session_state.get('process_subprocess_map_expanded', {})
+                for proc_group_idx, is_expanded in process_subprocess_map_expanded.items():
+                    if not is_expanded:
+                        continue
+                    
+                    proc_group_idx_int = int(proc_group_idx) if isinstance(proc_group_idx, str) else proc_group_idx
+                    
+                    # Get process group name and subprocess indices
+                    proc_group_names = st.session_state.get('proc_group_names', [])
+                    proc_group_lists = st.session_state.get('proc_group_lists', [])
+                    
+                    if proc_group_idx_int >= len(proc_group_names) or proc_group_idx_int >= len(proc_group_lists):
+                        continue
+                    
+                    proc_group_name = proc_group_names[proc_group_idx_int]
+                    subprocess_indices = proc_group_lists[proc_group_idx_int]
+                    
+                    try:
+                        # Full screen overlay (85% of screen)
+                        pg_overlay_w = int(w * 0.85)
+                        pg_overlay_h = int(h * 0.85)
+                        
+                        # Center in the middle of the screen
+                        center_px = w // 2
+                        center_py = h // 2
+                        
+                        pg_overlay_x0 = int(center_px - pg_overlay_w / 2)
+                        pg_overlay_y0 = int(center_py - pg_overlay_h / 2)
+                        pg_overlay_x1 = pg_overlay_x0 + pg_overlay_w
+                        pg_overlay_y1 = pg_overlay_y0 + pg_overlay_h
+                        
+                        # Ensure overlay stays within map bounds
+                        margin = 20
+                        pg_overlay_x0 = max(margin, pg_overlay_x0)
+                        pg_overlay_y0 = max(margin, pg_overlay_y0)
+                        pg_overlay_x1 = min(w - margin, pg_overlay_x1)
+                        pg_overlay_y1 = min(h - margin, pg_overlay_y1)
+                        
+                        # Draw light blue overlay with border (for subprocess level)
+                        draw.rectangle([pg_overlay_x0, pg_overlay_y0, pg_overlay_x1, pg_overlay_y1], 
+                                       fill=(240, 248, 255, 245),  # Light blue (AliceBlue)
+                                       outline=(70, 130, 180, 220),  # SteelBlue border
+                                       width=2)
+                        
+                        # Add label in top-left corner
+                        pg_overlay_label = f"Subprocess Area: {proc_group_name}"
+                        if font:
+                            label_bbox = draw.textbbox((0, 0), pg_overlay_label, font=font)
+                            label_w = label_bbox[2] - label_bbox[0]
+                            label_h = label_bbox[3] - label_bbox[1]
+                        else:
+                            label_w = len(pg_overlay_label) * 6
+                            label_h = 10
+                        
+                        label_x = pg_overlay_x0 + 15
+                        label_y = pg_overlay_y0 + 12
+                        
+                        # Background for label
+                        draw.rectangle([label_x-5, label_y-3, label_x+label_w+5, label_y+label_h+3], 
+                                     fill=(220, 235, 250, 200), 
+                                     outline=(100, 150, 200, 150), 
+                                     width=1)
+                        
+                        if font:
+                            draw.text((label_x, label_y), pg_overlay_label, fill=(30, 60, 90, 255), font=font)
+                        else:
+                            draw.text((label_x, label_y), pg_overlay_label, fill=(30, 60, 90, 255))
+                        
+                        # Draw subprocess boxes inside the overlay
+                        if subprocess_indices:
+                            n_subprocs = len(subprocess_indices)
+                            usable_w = pg_overlay_x1 - pg_overlay_x0 - 60
+                            usable_h = pg_overlay_y1 - pg_overlay_y0 - 80
+                            
+                            # Calculate grid layout
+                            cols = min(n_subprocs, 4)
+                            rows = (n_subprocs + cols - 1) // cols
+                            
+                            sub_box_w = min(180, usable_w // cols - 20)
+                            sub_box_h = min(70, usable_h // rows - 20)
+                            
+                            # Starting position for grid
+                            grid_start_x = pg_overlay_x0 + 30
+                            grid_start_y = pg_overlay_y0 + 50
+                            
+                            for si, sub_idx in enumerate(subprocess_indices):
+                                if sub_idx >= len(st.session_state['processes']):
+                                    continue
+                                    
+                                subprocess = st.session_state['processes'][sub_idx]
+                                col_idx = si % cols
+                                row_idx = si // cols
+                                
+                                # Default grid position
+                                sx = grid_start_x + col_idx * (sub_box_w + 25) + sub_box_w // 2
+                                sy = grid_start_y + row_idx * (sub_box_h + 25) + sub_box_h // 2
+                                
+                                # Check if subprocess has lat/lon - if so, draw at that location
+                                sub_lat = subprocess.get('lat')
+                                sub_lon = subprocess.get('lon')
+                                if sub_lat and sub_lon and str(sub_lat).strip() and str(sub_lon).strip():
+                                    try:
+                                        sub_lat_f = float(sub_lat)
+                                        sub_lon_f = float(sub_lon)
+                                        sx, sy = snapshot_lonlat_to_pixel(
+                                            sub_lon_f, sub_lat_f,
+                                            (st.session_state['map_center'][1], st.session_state['map_center'][0]),
+                                            st.session_state['map_zoom'], w, h
+                                        )
+                                    except (ValueError, TypeError):
+                                        pass
+                                
+                                sub_name = subprocess.get('name', f'Subprocess {sub_idx + 1}')
+                                sub_scale = float(subprocess.get('box_scale', 1.0) or 1.0)
+                                
+                                # Calculate box dimensions
+                                if font:
+                                    name_bbox = draw.textbbox((0, 0), sub_name, font=font)
+                                    name_w = name_bbox[2] - name_bbox[0]
+                                    name_h = name_bbox[3] - name_bbox[1]
+                                else:
+                                    name_w = len(sub_name) * 6
+                                    name_h = 10
+                                
+                                box_w_sub = int(name_w * sub_scale + 28)
+                                box_h_sub = int(name_h * sub_scale + 22)
+                                
+                                sx0 = int(sx - box_w_sub // 2)
+                                sy0 = int(sy - box_h_sub // 2)
+                                sx1 = sx0 + box_w_sub
+                                sy1 = sy0 + box_h_sub
+                                
+                                # Draw subprocess box with blue color
+                                draw.rectangle([sx0, sy0, sx1, sy1], 
+                                               fill=(224, 242, 255, 245),  # Light blue
+                                               outline=(23, 105, 170, 255),  # Dark blue border
+                                               width=2)
+                                
+                                # Center text
+                                text_x = int(sx - name_w // 2)
+                                text_y = int(sy - name_h // 2)
+                                
+                                if font:
+                                    draw.text((text_x, text_y), sub_name, fill=(10, 53, 85, 255), font=font)
+                                else:
+                                    draw.text((text_x, text_y), sub_name, fill=(10, 53, 85, 255))
                         
                     except (ValueError, TypeError):
                         continue
