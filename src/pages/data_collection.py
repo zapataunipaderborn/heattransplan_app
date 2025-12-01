@@ -1496,37 +1496,36 @@ with left:
                         if i not in st.session_state['subprocess_map_expanded']:
                             st.session_state['subprocess_map_expanded'][i] = False
                         
-                        # Sub-subprocesses header (just label)
+                        # Sub-subprocesses header with Map toggle + Count + Add button
                         child_count = len(p.get('children', []))
-                        st.markdown(f"**Sub-subprocesses:** ({child_count} items)")
+                        map_expanded = st.session_state['subprocess_map_expanded'].get(i, False)
+                        
+                        header_cols = st.columns([0.40, 0.12, 0.08, 0.20, 0.20])
+                        header_cols[0].markdown(f"**Sub-subprocesses:**")
+                        
+                        # Map toggle button
+                        map_toggle_label = "🔽 Hide" if map_expanded else "▶️ Map"
+                        if header_cols[1].button(map_toggle_label, key=f"map_toggle_subsub_{i}", help="Show/hide sub-subprocesses on map"):
+                            st.session_state['subprocess_map_expanded'][i] = not map_expanded
+                            st.rerun()
+                        
+                        # Count
+                        header_cols[2].markdown(f"**{child_count}**")
+                        
+                        # Status indicator
+                        if map_expanded:
+                            header_cols[3].caption("🗺️ On map")
+                        
+                        # Add button
+                        if header_cols[4].button("➕ Add", key=f"add_subsub_{i}", help="Add sub-subprocess"):
+                            add_child_to_node(p, f"Sub-subprocess {child_count + 1}")
+                            st.rerun()
                         
                         # Render sub-subprocesses (final level - no deeper)
                         if p.get('children'):
                             render_subsubprocesses(st, p, i, process_model_dict=PROCESS_MODEL_DICT)
                         else:
                             st.caption("No sub-subprocesses yet.")
-                        
-                        # =====================================================
-                        # BOTTOM BAR: Map toggle + Count + Add button (ALWAYS)
-                        # =====================================================
-                        map_expanded = st.session_state['subprocess_map_expanded'].get(i, False)
-                        bottom_cols = st.columns([0.12, 0.48, 0.15, 0.20])
-                        
-                        map_toggle_label = "🔽 Hide" if map_expanded else "▶️ Map"
-                        if bottom_cols[0].button(map_toggle_label, key=f"map_toggle_subsub_{i}", help="Show/hide sub-subprocesses on map"):
-                            st.session_state['subprocess_map_expanded'][i] = not map_expanded
-                            st.rerun()
-                        
-                        status_text = "🗺️ Showing on map" if map_expanded else "Click to show on map"
-                        bottom_cols[1].caption(status_text)
-                        
-                        # Count
-                        bottom_cols[2].markdown(f"**{child_count}**")
-                        
-                        # Add button
-                        if bottom_cols[3].button("➕ Add", key=f"add_subsub_{i}", help="Add sub-subprocess"):
-                            add_child_to_node(p, f"Sub-subprocess {child_count + 1}")
-                            st.rerun()
                         
                     if local_idx < len(g_list) - 1:
                         st.markdown("<div style='height:1px; background:#888888; opacity:0.5; margin:4px 0;'></div>", unsafe_allow_html=True)
