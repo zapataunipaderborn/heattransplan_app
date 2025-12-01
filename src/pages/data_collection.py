@@ -671,7 +671,7 @@ with left:
                 if 'proc_group_model' not in st.session_state:
                     st.session_state['proc_group_model'] = {}
                 if g not in st.session_state['proc_group_model']:
-                    st.session_state['proc_group_model'][g] = {'level1': None, 'level2': None, 'level3': None}
+                    st.session_state['proc_group_model'][g] = {'level1': None, 'level2': None}
                 
                 # Top thick separator for group
                 st.markdown("<div style='height:3px; background:#888888; margin:12px 0 6px;'></div>", unsafe_allow_html=True)
@@ -794,7 +794,7 @@ with left:
                         # Use dialog to show process model selector
                         @st.dialog("Process Model Selection")
                         def show_process_model_dialog():
-                            st.markdown("### Select process category, type, and product")
+                            st.markdown("### Select process category and type")
                             
                             # Level 1: Main category
                             level1_options = ["Select category..."] + list(PROCESS_MODEL_DICT.keys())
@@ -828,33 +828,11 @@ with left:
                                 
                                 if selected_level2 != "Select type...":
                                     st.session_state['proc_group_model'][g]['level2'] = selected_level2
-                                    
-                                    # Level 3: Product
-                                    level3_options = ["Select product..."] + PROCESS_MODEL_DICT[selected_level1][selected_level2]
-                                    current_level3 = st.session_state['proc_group_model'][g].get('level3')
-                                    if current_level3 and current_level3 not in level3_options:
-                                        st.session_state['proc_group_model'][g]['level3'] = None
-                                        current_level3 = None
-                                    level3_index = level3_options.index(current_level3) if current_level3 in level3_options else 0
-                                    
-                                    selected_level3 = st.selectbox(
-                                        "Product",
-                                        options=level3_options,
-                                        index=level3_index,
-                                        key=f"dialog_model_level3_{g}"
-                                    )
-                                    
-                                    if selected_level3 != "Select product...":
-                                        st.session_state['proc_group_model'][g]['level3'] = selected_level3
-                                    else:
-                                        st.session_state['proc_group_model'][g]['level3'] = None
                                 else:
                                     st.session_state['proc_group_model'][g]['level2'] = None
-                                    st.session_state['proc_group_model'][g]['level3'] = None
                             else:
                                 st.session_state['proc_group_model'][g]['level1'] = None
                                 st.session_state['proc_group_model'][g]['level2'] = None
-                                st.session_state['proc_group_model'][g]['level3'] = None
                             
                             # Initialize parameter request state
                             if 'proc_group_params_requested' not in st.session_state:
@@ -913,9 +891,7 @@ with left:
                     
                     # Display current selection
                     current_model = st.session_state['proc_group_model'][g]
-                    if current_model.get('level3'):
-                        model_display_col.caption(f"Model: {current_model['level1']} → {current_model['level2']} → {current_model['level3']}")
-                    elif current_model.get('level2'):
+                    if current_model.get('level2'):
                         model_display_col.caption(f"Model: {current_model['level1']} → {current_model['level2']}")
                     elif current_model.get('level1'):
                         model_display_col.caption(f"Model: {current_model['level1']}")
