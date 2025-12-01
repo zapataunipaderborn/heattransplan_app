@@ -639,6 +639,13 @@ with left:
                 st.session_state['proc_groups'] = new_groups
 
             for g, g_list in enumerate(st.session_state['proc_groups']):
+                # Initialize all group-specific session state variables BEFORE any UI elements
+                # Process Model initialization for groups
+                if 'proc_group_model' not in st.session_state:
+                    st.session_state['proc_group_model'] = {}
+                if g not in st.session_state['proc_group_model']:
+                    st.session_state['proc_group_model'][g] = {'level1': None, 'level2': None, 'level3': None}
+                
                 # Top thick separator for group
                 st.markdown("<div style='height:3px; background:#888888; margin:12px 0 6px;'></div>", unsafe_allow_html=True)
                 # Arrow | Name | Place | Count | Delete
@@ -754,10 +761,6 @@ with left:
                     # (Process size control moved to group header for compactness)
                     
                     # Process Model button and dialog
-                    if 'proc_group_model' not in st.session_state:
-                        st.session_state['proc_group_model'] = {}
-                    if g not in st.session_state['proc_group_model']:
-                        st.session_state['proc_group_model'][g] = {'level1': None, 'level2': None, 'level3': None}
                     
                     model_btn_col, model_display_col = st.columns([0.3, 0.7])
                     if model_btn_col.button("Select Process Model", key=f"open_model_dialog_{g}"):
