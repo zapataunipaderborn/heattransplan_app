@@ -39,7 +39,8 @@ with open(PROCESS_MODELS_PATH, 'r') as f:
 # RECURSIVE UI FUNCTION for rendering children at any level
 # =============================================================================
 def render_children_recursive(st_module, parent_node, key_prefix, indent_level=1, 
-                               process_model_dict=None, parent_group_idx=None):
+                               process_model_dict=None, parent_group_idx=None,
+                               parent_subprocess_idx=None):
     """
     Render children (sub-subprocesses, sub-sub-subprocesses, etc.) recursively.
     This is the REUSABLE function that provides the same UI at every level.
@@ -51,6 +52,7 @@ def render_children_recursive(st_module, parent_node, key_prefix, indent_level=1
         indent_level: Visual indentation level
         process_model_dict: Dict of process models for selection
         parent_group_idx: Index of the parent process group
+        parent_subprocess_idx: Index of the parent subprocess (for map overlay tracking)
     """
     children = parent_node.get('children', [])
     level = parent_node.get('level', 0) + 1
@@ -78,10 +80,10 @@ def render_children_recursive(st_module, parent_node, key_prefix, indent_level=1
         if 'expanded' not in child:
             child['expanded'] = False
         
-        # Header row: Toggle | Name | Size | Place | Count | Delete
+        # Header row: Toggle | Name | Size | Place | Count | Add | Delete
         cols = st_module.columns([0.05, 0.40, 0.12, 0.12, 0.08, 0.08, 0.05])
         
-        # Toggle expand/collapse
+        # Toggle expand/collapse (for UI details)
         toggle_label = "▾" if child.get('expanded', False) else "▸"
         if cols[0].button(toggle_label, key=f"{child_key}_toggle"):
             child['expanded'] = not child.get('expanded', False)
@@ -139,7 +141,7 @@ def render_children_recursive(st_module, parent_node, key_prefix, indent_level=1
         cols[4].markdown(f"**{grandchild_count}**")
         
         # Add grandchild button
-        if cols[5].button(f"+", key=f"{child_key}_add_child", help=f"Add {child_level_name}"):
+        if cols[5].button("+", key=f"{child_key}_add_child", help=f"Add {child_level_name}"):
             add_child_to_node(child, f"{child_level_name} {grandchild_count + 1}")
             st_module.rerun()
         
@@ -1531,8 +1533,15 @@ with left:
                         if 'children' not in p:
                             p['children'] = []
                         
+                        # Initialize map_expanded state for this subprocess (controls overlay on map)
+                        if 'subprocess_map_expanded' not in st.session_state:
+                            st.session_state['subprocess_map_expanded'] = {}
+                        if i not in st.session_state['subprocess_map_expanded']:
+                            st.session_state['subprocess_map_expanded'][i] = False
+                        
                         # Sub-subprocesses header with Add button
-                        subsub_header_cols = st.columns([0.6, 0.25, 0.15])
+                        subsub_header_cols = st.columns([0.55, 0.20, 0.25])
+                        
                         subsub_header_cols[0].markdown("**Sub-subprocesses:**")
                         child_count = len(p.get('children', []))
                         subsub_header_cols[1].caption(f"({child_count} items)")
@@ -1545,9 +1554,21 @@ with left:
                         if p.get('children'):
                             render_children_recursive(st, p, f"subsub_{i}", indent_level=1, 
                                                     process_model_dict=PROCESS_MODEL_DICT,
-                                                    parent_group_idx=g)
+                                                    parent_group_idx=g,
+                                                    parent_subprocess_idx=i)
                         else:
                             st.caption("No sub-subprocesses yet. Use ➕ to add one.")
+                        
+                        # Map expand toggle at BOTTOM (arrow that opens overlay on map)
+                        map_expanded = st.session_state['subprocess_map_expanded'].get(i, False)
+                        map_toggle_cols = st.columns([0.08, 0.72, 0.20])
+                        map_toggle_label = "🔽" if map_expanded else "▶️"
+                        if map_toggle_cols[0].button(map_toggle_label, key=f"map_toggle_subsub_{i}", help="Open/close area on map for sub-subprocesses"):
+                            st.session_state['subprocess_map_expanded'][i] = not map_expanded
+                            st.rerun()
+                        map_toggle_cols[1].caption("Show on map" if not map_expanded else "Hide from map")
+                        if map_expanded:
+                            map_toggle_cols[2].markdown("🗺️", help="Overlay visible on map")
                         
                     if local_idx < len(g_list) - 1:
                         st.markdown("<div style='height:1px; background:#888888; opacity:0.5; margin:4px 0;'></div>", unsafe_allow_html=True)
@@ -1931,26 +1952,34 @@ div.leaflet-container {background: #f2f2f3 !important;}
                         st.session_state['measure_distance_m'] = None
             with top_c3:
                 # Export button
-                csv_data = export_to_csv()
-                st.download_button(
-                    label="Export",
-                    data=csv_data,
-                    file_name=f"heat_integration_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                    mime="text/csv",
-                    key="export_csv",
-                    help="Export process data to CSV"
-                )
+                if st.button("Export CSV", key="export_csv_btn", help="Export process data to CSV"):
+                    csv_data = export_to_csv()
+                    st.session_state['_export_csv_data'] = csv_data
+                    st.session_state['_export_csv_ready'] = True
+                
+                if st.session_state.get('_export_csv_ready'):
+                    st.download_button(
+                        label="⬇️ Download CSV",
+                        data=st.session_state['_export_csv_data'],
+                        file_name=f"heat_integration_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                        mime="text/csv",
+                        key="export_csv_download"
+                    )
             with top_c4:
-                # Save button - downloads directly
-                state_json = save_app_state()
-                st.download_button(
-                    label="Save",
-                    data=state_json,
-                    file_name=f"heat_integration_state_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                    mime="application/json",
-                    key="download_state",
-                    help="Download current state"
-                )
+                # Save button
+                if st.button("Save State", key="save_state_btn", help="Save current state"):
+                    state_json = save_app_state()
+                    st.session_state['_save_state_data'] = state_json
+                    st.session_state['_save_state_ready'] = True
+                
+                if st.session_state.get('_save_state_ready'):
+                    st.download_button(
+                        label="⬇️ Download JSON",
+                        data=st.session_state['_save_state_data'],
+                        file_name=f"heat_integration_state_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                        mime="application/json",
+                        key="save_state_download"
+                    )
             with top_c5:
                 # Check if we just loaded a file - show success message or buttons
                 if 'state_just_loaded' in st.session_state and st.session_state['state_just_loaded']:
@@ -2404,6 +2433,154 @@ div.leaflet-container {background: #f2f2f3 !important;}
                         draw.text((ct_x, ct_y), label, fill=text_color, font=font)
                     else:
                         draw.text((ct_x, ct_y), label, fill=text_color)
+
+                # Fifth pass: draw sub-subprocess overlays for expanded subprocesses
+                subprocess_map_expanded = st.session_state.get('subprocess_map_expanded', {})
+                for subprocess_idx, is_expanded in subprocess_map_expanded.items():
+                    if not is_expanded:
+                        continue
+                    
+                    subprocess_idx_int = int(subprocess_idx) if isinstance(subprocess_idx, str) else subprocess_idx
+                    
+                    # Get subprocess position
+                    if subprocess_idx_int >= len(st.session_state['processes']):
+                        continue
+                    
+                    subprocess = st.session_state['processes'][subprocess_idx_int]
+                    sub_lat = subprocess.get('lat')
+                    sub_lon = subprocess.get('lon')
+                    
+                    # Draw overlay even if subprocess has no coordinates (centered on screen)
+                    try:
+                        # Full screen overlay like process overlay, but slightly smaller (80% instead of 90%)
+                        sub_overlay_w = int(w * 0.80)
+                        sub_overlay_h = int(h * 0.80)
+                        
+                        # Always center in the middle of the screen
+                        center_px = w // 2
+                        center_py = h // 2
+                        
+                        sub_overlay_x0 = int(center_px - sub_overlay_w / 2)
+                        sub_overlay_y0 = int(center_py - sub_overlay_h / 2)
+                        sub_overlay_x1 = sub_overlay_x0 + sub_overlay_w
+                        sub_overlay_y1 = sub_overlay_y0 + sub_overlay_h
+                        
+                        # Ensure overlay stays within map bounds with some padding
+                        margin = 25
+                        sub_overlay_x0 = max(margin, sub_overlay_x0)
+                        sub_overlay_y0 = max(margin, sub_overlay_y0)
+                        sub_overlay_x1 = min(w - margin, sub_overlay_x1)
+                        sub_overlay_y1 = min(h - margin, sub_overlay_y1)
+                        
+                        # Draw white overlay with subtle border (similar to process overlay but white)
+                        draw.rectangle([sub_overlay_x0, sub_overlay_y0, sub_overlay_x1, sub_overlay_y1], 
+                                       fill=(255, 255, 255, 245),
+                                       outline=(150, 150, 150, 220), 
+                                       width=2)
+                        
+                        # Add label in top-left corner
+                        subprocess_name = subprocess.get('name', f'Subprocess {subprocess_idx_int + 1}')
+                        sub_overlay_label = f"Sub-subprocess Area: {subprocess_name}"
+                        if font:
+                            label_bbox = draw.textbbox((0, 0), sub_overlay_label, font=font)
+                            label_w = label_bbox[2] - label_bbox[0]
+                            label_h = label_bbox[3] - label_bbox[1]
+                        else:
+                            label_w = len(sub_overlay_label) * 6
+                            label_h = 10
+                        
+                        label_x = sub_overlay_x0 + 15
+                        label_y = sub_overlay_y0 + 12
+                        
+                        # Subtle background for label
+                        draw.rectangle([label_x-5, label_y-3, label_x+label_w+5, label_y+label_h+3], 
+                                     fill=(240, 240, 240, 200), 
+                                     outline=(180, 180, 180, 150), 
+                                     width=1)
+                        
+                        if font:
+                            draw.text((label_x, label_y), sub_overlay_label, fill=(40, 40, 40, 255), font=font)
+                        else:
+                            draw.text((label_x, label_y), sub_overlay_label, fill=(40, 40, 40, 255))
+                        
+                        # Draw sub-subprocess boxes inside the overlay
+                        children = subprocess.get('children', [])
+                        if children:
+                            n_children = len(children)
+                            usable_w = sub_overlay_x1 - sub_overlay_x0 - 60
+                            usable_h = sub_overlay_y1 - sub_overlay_y0 - 80
+                            
+                            # Calculate grid layout
+                            cols = min(n_children, 4)
+                            rows = (n_children + cols - 1) // cols
+                            
+                            child_box_w = min(150, usable_w // cols - 20)
+                            child_box_h = min(60, usable_h // rows - 20)
+                            
+                            # Starting position for grid
+                            grid_start_x = sub_overlay_x0 + 30
+                            grid_start_y = sub_overlay_y0 + 50
+                            
+                            for ci, child in enumerate(children):
+                                col_idx = ci % cols
+                                row_idx = ci // cols
+                                
+                                # Default grid position
+                                cx = grid_start_x + col_idx * (child_box_w + 25) + child_box_w // 2
+                                cy = grid_start_y + row_idx * (child_box_h + 25) + child_box_h // 2
+                                
+                                # Check if child has lat/lon - if so, draw at that location instead
+                                child_lat = child.get('lat')
+                                child_lon = child.get('lon')
+                                if child_lat and child_lon and str(child_lat).strip() and str(child_lon).strip():
+                                    try:
+                                        child_lat_f = float(child_lat)
+                                        child_lon_f = float(child_lon)
+                                        cx, cy = snapshot_lonlat_to_pixel(
+                                            child_lon_f, child_lat_f,
+                                            (st.session_state['map_center'][1], st.session_state['map_center'][0]),
+                                            st.session_state['map_zoom'], w, h
+                                        )
+                                    except (ValueError, TypeError):
+                                        pass
+                                
+                                child_name = child.get('name', f'Sub-sub {ci + 1}')
+                                child_scale = float(child.get('box_scale', 0.8) or 0.8)
+                                
+                                # Calculate box dimensions
+                                if font:
+                                    name_bbox = draw.textbbox((0, 0), child_name, font=font)
+                                    name_w = name_bbox[2] - name_bbox[0]
+                                    name_h = name_bbox[3] - name_bbox[1]
+                                else:
+                                    name_w = len(child_name) * 6
+                                    name_h = 10
+                                
+                                box_w_child = int(name_w * child_scale + 24)
+                                box_h_child = int(name_h * child_scale + 18)
+                                
+                                cx0 = int(cx - box_w_child // 2)
+                                cy0 = int(cy - box_h_child // 2)
+                                cx1 = cx0 + box_w_child
+                                cy1 = cy0 + box_h_child
+                                
+                                # Draw child box with purple/violet color (to distinguish from subprocesses)
+                                draw.rectangle([cx0, cy0, cx1, cy1], 
+                                               fill=(245, 230, 255, 245),  # Light purple
+                                               outline=(128, 0, 128, 255),  # Purple border
+                                               width=2)
+                                
+                                # Center text
+                                text_x = int(cx - name_w // 2)
+                                text_y = int(cy - name_h // 2)
+                                
+                                if font:
+                                    draw.text((text_x, text_y), child_name, fill=(75, 0, 75, 255), font=font)
+                                else:
+                                    draw.text((text_x, text_y), child_name, fill=(75, 0, 75, 255))
+                        
+                    except (ValueError, TypeError):
+                        continue
 
                 # Fourth pass: vertical stream arrows (Tin above box entering, Tout below leaving)
                 # Color rule: if Tin > Tout -> red (cooling stream), else blue (heating stream). Unknown -> gray.
