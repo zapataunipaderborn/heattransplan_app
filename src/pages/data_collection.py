@@ -24,7 +24,6 @@ from process_utils import (
     add_stream_to_node,
     delete_stream_from_node,
     iterate_all_nodes,
-    copy_streams_to_all_descendants,
     get_level_name,
 )
 import csv
@@ -200,20 +199,11 @@ def render_children_recursive(st_module, parent_node, key_prefix, indent_level=1
             # Recursive children section (grandchildren, great-grandchildren, etc.)
             grandchildren = child.get('children', [])
             if grandchildren or True:  # Always show the section
-                gc_header = st_module.columns([0.45, 0.20, 0.20, 0.15])
+                gc_header = st_module.columns([0.6, 0.25, 0.15])
                 gc_header[0].markdown(f"**{child_level_name}s:**")
                 gc_header[1].caption(f"({len(grandchildren)} items)")
                 
-                # Sync streams button - copies streams to all grandchildren
-                if len(grandchildren) > 0:
-                    if gc_header[2].button("🔄 Sync", key=f"{child_key}_sync_gc", help="Copy streams to all children"):
-                        copy_streams_to_all_descendants(child)
-                        st_module.session_state['ui_status_msg'] = f"Synced streams to {len(grandchildren)} child(ren)"
-                        st_module.rerun()
-                else:
-                    gc_header[2].caption("")  # Empty placeholder
-                
-                if gc_header[3].button("➕ Add", key=f"{child_key}_add_gc"):
+                if gc_header[2].button("➕ Add", key=f"{child_key}_add_gc"):
                     add_child_to_node(child, f"{child_level_name} {len(grandchildren) + 1}")
                     st_module.rerun()
                 
@@ -1541,22 +1531,13 @@ with left:
                         if 'children' not in p:
                             p['children'] = []
                         
-                        # Sub-subprocesses header with Add button and Sync button
-                        subsub_header_cols = st.columns([0.45, 0.20, 0.20, 0.15])
+                        # Sub-subprocesses header with Add button
+                        subsub_header_cols = st.columns([0.6, 0.25, 0.15])
                         subsub_header_cols[0].markdown("**Sub-subprocesses:**")
                         child_count = len(p.get('children', []))
                         subsub_header_cols[1].caption(f"({child_count} items)")
                         
-                        # Sync streams button - copies streams from this subprocess to all children
-                        if child_count > 0:
-                            if subsub_header_cols[2].button("🔄 Sync", key=f"sync_streams_{i}", help="Copy streams to all sub-subprocesses"):
-                                copy_streams_to_all_descendants(p)
-                                st.session_state['ui_status_msg'] = f"Synced streams to {child_count} sub-subprocess(es)"
-                                st.rerun()
-                        else:
-                            subsub_header_cols[2].caption("")  # Empty placeholder
-                        
-                        if subsub_header_cols[3].button("➕ Add", key=f"add_subsub_{i}"):
+                        if subsub_header_cols[2].button("➕ Add", key=f"add_subsub_{i}"):
                             add_child_to_node(p, f"Sub-subprocess {child_count + 1}")
                             st.rerun()
                         
