@@ -970,21 +970,6 @@ with left:
                     if i not in st.session_state['proc_model']:
                         st.session_state['proc_model'][i] = {'level1': None, 'level2': None}
                     
-                    # Initialize parameter request state
-                    if 'proc_params_requested' not in st.session_state:
-                        st.session_state['proc_params_requested'] = {}
-                    if i not in st.session_state['proc_params_requested']:
-                        st.session_state['proc_params_requested'][i] = False
-                    
-                    # Initialize parameters storage
-                    if 'proc_params' not in st.session_state:
-                        st.session_state['proc_params'] = {}
-                    if i not in st.session_state['proc_params']:
-                        st.session_state['proc_params'][i] = {
-                            'tin': '', 'tout': '', 'time': '', 'cp': '',
-                            'mass_flow': None, 'thermal_power': None
-                        }
-                    
                     # Per-subprocess header (toggle | name | size | place | delete)
                     header_cols = st.columns([0.06, 0.54, 0.14, 0.16, 0.10])
                     toggle_label = "▾" if st.session_state['proc_expanded'][i] else "▸"
@@ -1044,135 +1029,6 @@ with left:
                             st.rerun()
 
                     if st.session_state['proc_expanded'][i]:
-                        # Information expandable section
-                        if 'proc_extra_info_expanded' not in st.session_state:
-                            st.session_state['proc_extra_info_expanded'] = [False] * len(st.session_state['processes'])
-                        # Ensure list is correct length
-                        if len(st.session_state['proc_extra_info_expanded']) < len(st.session_state['processes']):
-                            st.session_state['proc_extra_info_expanded'].extend([False] * (len(st.session_state['processes']) - len(st.session_state['proc_extra_info_expanded'])))
-                        
-                        extra_header_cols = st.columns([0.05, 0.45, 0.5])
-                        extra_toggle_label = "▾" if st.session_state['proc_extra_info_expanded'][i] else "▸"
-                        if extra_header_cols[0].button(extra_toggle_label, key=f"extra_info_toggle_{i}"):
-                            st.session_state['proc_extra_info_expanded'][i] = not st.session_state['proc_extra_info_expanded'][i]
-                            st.rerun()
-                        extra_header_cols[1].markdown("**Information**")
-                        
-                        # Process Model button (initialization already done at top of loop)
-                        if extra_header_cols[2].button("Select Process Model", key=f"open_subprocess_model_dialog_{i}"):
-                            @st.dialog("Subprocess Process Model Selection")
-                            def show_subprocess_model_dialog():
-                                    st.markdown("### Select process category and type")
-                                    
-                                    # Level 1: Main category
-                                    level1_options = ["Select category..."] + list(PROCESS_MODEL_DICT.keys())
-                                    current_level1 = st.session_state['proc_model'][i].get('level1')
-                                    level1_index = level1_options.index(current_level1) if current_level1 in level1_options else 0
-                                    
-                                    selected_level1 = st.selectbox(
-                                        "Category",
-                                        options=level1_options,
-                                        index=level1_index,
-                                        key=f"dialog_subprocess_model_level1_{i}"
-                                    )
-                                    
-                                    if selected_level1 != "Select category...":
-                                        st.session_state['proc_model'][i]['level1'] = selected_level1
-                                        
-                                        # Level 2: Subcategory (final level)
-                                        level2_options = ["Select type..."] + list(PROCESS_MODEL_DICT[selected_level1].keys())
-                                        current_level2 = st.session_state['proc_model'][i].get('level2')
-                                        if current_level2 and current_level2 not in level2_options:
-                                            st.session_state['proc_model'][i]['level2'] = None
-                                            current_level2 = None
-                                        level2_index = level2_options.index(current_level2) if current_level2 in level2_options else 0
-                                        
-                                        selected_level2 = st.selectbox(
-                                            "Type",
-                                            options=level2_options,
-                                            index=level2_index,
-                                            key=f"dialog_subprocess_model_level2_{i}"
-                                        )
-                                        
-                                        if selected_level2 != "Select type...":
-                                            st.session_state['proc_model'][i]['level2'] = selected_level2
-                                        else:
-                                            st.session_state['proc_model'][i]['level2'] = None
-                                    else:
-                                        st.session_state['proc_model'][i]['level1'] = None
-                                        st.session_state['proc_model'][i]['level2'] = None
-                                    
-                                    if st.button("Request parameters", key=f"req_params_sub_{i}") or st.session_state['proc_params_requested'][i]:
-                                        st.session_state['proc_params_requested'][i] = True
-                                        st.markdown("---")
-                                        st.markdown("### Process Parameters")
-                                        
-                                        params = st.session_state['proc_params'][i]
-                                        param_cols = st.columns([1, 1, 1, 1])
-                                        params['tin'] = param_cols[0].text_input("Tin (°C)", value=params.get('tin', ''), key=f"param_tin_sub_{i}")
-                                        params['tout'] = param_cols[1].text_input("Tout (°C)", value=params.get('tout', ''), key=f"param_tout_sub_{i}")
-                                        params['time'] = param_cols[2].text_input("Time (h)", value=params.get('time', ''), key=f"param_time_sub_{i}")
-                                        params['cp'] = param_cols[3].text_input("cp (kJ/kg·K)", value=params.get('cp', ''), key=f"param_cp_sub_{i}")
-                                        
-                                        if st.button("Calculate energy demand", key=f"calc_sub_{i}"):
-                                            try:
-                                                tin = float(params['tin'])
-                                                tout = float(params['tout'])
-                                                time = float(params['time'])
-                                                cp = float(params['cp'])
-                                                
-                                                # Example calculation: Q = m * cp * ΔT
-                                                # Assuming mass flow (m) = 1 kg/s for demonstration
-                                                delta_t = abs(tout - tin)
-                                                mass_flow = 1.0  # kg/s (placeholder)
-                                                thermal_power = mass_flow * cp * delta_t  # kW
-                                                
-                                                params['mass_flow'] = mass_flow
-                                                params['thermal_power'] = thermal_power
-                                            except (ValueError, TypeError):
-                                                st.error("Please enter valid numeric values for all parameters")
-                                        
-                                        # Display results if calculated
-                                        if params.get('mass_flow') is not None and params.get('thermal_power') is not None:
-                                            st.success(f"**Mass Flow:** {params['mass_flow']:.2f} kg/s")
-                                            st.success(f"**Thermal Power:** {params['thermal_power']:.2f} kW")
-                                        
-                                        if st.button("Import energy values", key=f"done_sub_{i}"):
-                                            st.rerun()
-                            
-                            show_subprocess_model_dialog()
-                        
-                        if st.session_state['proc_extra_info_expanded'][i]:
-                            # Product information
-                            r1c1,r1c2,r1c3,r1c4 = st.columns([1,1,1,1])
-                            p['conntemp'] = r1c1.text_input("Product Tin", value=p.get('conntemp',''), key=f"p_conntemp_{i}")
-                            p['product_tout'] = r1c2.text_input("Product Tout", value=p.get('product_tout',''), key=f"p_ptout_{i}")
-                            p['connm'] = r1c3.text_input("Product ṁ", value=p.get('connm',''), key=f"p_connm_{i}")
-                            p['conncp'] = r1c4.text_input("Product cp", value=p.get('conncp',''), key=f"p_conncp_{i}")
-                            
-                            # Initialize extra_info dict if not exists
-                            if 'extra_info' not in p:
-                                p['extra_info'] = {}
-                            
-                            # Air information
-                            air_r1c1, air_r1c2, air_r1c3, air_r1c4 = st.columns([1, 1, 1, 1])
-                            p['extra_info']['air_tin'] = air_r1c1.text_input("Air Tin", value=p.get('extra_info', {}).get('air_tin', ''), key=f"p_air_tin_{i}")
-                            p['extra_info']['air_tout'] = air_r1c2.text_input("Air Tout", value=p.get('extra_info', {}).get('air_tout', ''), key=f"p_air_tout_{i}")
-                            p['extra_info']['air_mdot'] = air_r1c3.text_input("Air ṁ", value=p.get('extra_info', {}).get('air_mdot', ''), key=f"p_air_mdot_{i}")
-                            p['extra_info']['air_cp'] = air_r1c4.text_input("Air cp", value=p.get('extra_info', {}).get('air_cp', ''), key=f"p_air_cp_{i}")
-                            
-                            # Additional properties
-                            extra_r1c1, extra_r1c2, extra_r1c3 = st.columns([1, 1, 1])
-                            p['extra_info']['water_content_in'] = extra_r1c1.text_input("Water Content In", value=p.get('extra_info', {}).get('water_content_in', ''), key=f"p_water_in_{i}")
-                            p['extra_info']['water_content_out'] = extra_r1c2.text_input("Water Content Out", value=p.get('extra_info', {}).get('water_content_out', ''), key=f"p_water_out_{i}")
-                            p['extra_info']['density'] = extra_r1c3.text_input("Density", value=p.get('extra_info', {}).get('density', ''), key=f"p_density_{i}")
-                            
-                            extra_r2c1 = st.columns([1])[0]
-                            p['extra_info']['pressure'] = extra_r2c1.text_input("Pressure", value=p.get('extra_info', {}).get('pressure', ''), key=f"p_pressure_{i}")
-                            
-                            # Custom notes field (full width)
-                            p['extra_info']['notes'] = st.text_area("Notes", value=p.get('extra_info', {}).get('notes', ''), key=f"p_notes_{i}", height=80)
-
                         # Multi-select for next processes (exclude self)
                         all_procs = st.session_state['processes']
                         if len(all_procs) <= 1:
@@ -1193,6 +1049,13 @@ with left:
                             selected = st.multiselect("Next processes", options=options, default=preselect, key=f"p_next_multi_{i}")
                             # Store as comma-separated names
                             p['next'] = ", ".join(selected)
+
+                        # Initialize extra_info dict if not exists
+                        if 'extra_info' not in p:
+                            p['extra_info'] = {}
+                        
+                        # Custom notes field (full width)
+                        p['extra_info']['notes'] = st.text_area("Notes", value=p.get('extra_info', {}).get('notes', ''), key=f"p_notes_{i}", height=80)
 
                         # Streams section with persistent add button
                         streams = p.get('streams', [])
