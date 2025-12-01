@@ -946,6 +946,19 @@ with left:
                     if i not in st.session_state['proc_model']:
                         st.session_state['proc_model'][i] = {'level1': None, 'level2': None}
                     
+                    # Process Model parameters initialization for subprocesses
+                    if 'proc_params' not in st.session_state:
+                        st.session_state['proc_params'] = {}
+                    if i not in st.session_state['proc_params']:
+                        st.session_state['proc_params'][i] = {
+                            'tin': '', 'tout': '', 'time': '', 'cp': '',
+                            'mass_flow': None, 'thermal_power': None
+                        }
+                    if 'proc_params_requested' not in st.session_state:
+                        st.session_state['proc_params_requested'] = {}
+                    if i not in st.session_state['proc_params_requested']:
+                        st.session_state['proc_params_requested'][i] = False
+                    
                     # Per-subprocess header (toggle | name | size | place | delete)
                     header_cols = st.columns([0.06, 0.54, 0.14, 0.16, 0.10])
                     toggle_label = "▾" if st.session_state['proc_expanded'][i] else "▸"
@@ -1029,6 +1042,102 @@ with left:
                         # Initialize extra_info dict if not exists
                         if 'extra_info' not in p:
                             p['extra_info'] = {}
+                        
+                        # Process Model button and dialog for subprocess
+                        model_btn_col, model_display_col = st.columns([0.3, 0.7])
+                        if model_btn_col.button("Select Process Model", key=f"open_model_dialog_sub_{i}"):
+                            # Use dialog to show process model selector
+                            @st.dialog("Process Model Selection")
+                            def show_subprocess_model_dialog():
+                                st.markdown("### Select process category and type")
+                                
+                                # Level 1: Main category
+                                level1_options = ["Select category..."] + list(PROCESS_MODEL_DICT.keys())
+                                current_level1 = st.session_state['proc_model'][i].get('level1')
+                                level1_index = level1_options.index(current_level1) if current_level1 in level1_options else 0
+                                
+                                selected_level1 = st.selectbox(
+                                    "Category",
+                                    options=level1_options,
+                                    index=level1_index,
+                                    key=f"dialog_sub_model_level1_{i}"
+                                )
+                                
+                                if selected_level1 != "Select category...":
+                                    st.session_state['proc_model'][i]['level1'] = selected_level1
+                                    
+                                    # Level 2: Subcategory
+                                    level2_options = ["Select type..."] + list(PROCESS_MODEL_DICT[selected_level1].keys())
+                                    current_level2 = st.session_state['proc_model'][i].get('level2')
+                                    if current_level2 and current_level2 not in level2_options:
+                                        st.session_state['proc_model'][i]['level2'] = None
+                                        current_level2 = None
+                                    level2_index = level2_options.index(current_level2) if current_level2 in level2_options else 0
+                                    
+                                    selected_level2 = st.selectbox(
+                                        "Type",
+                                        options=level2_options,
+                                        index=level2_index,
+                                        key=f"dialog_sub_model_level2_{i}"
+                                    )
+                                    
+                                    if selected_level2 != "Select type...":
+                                        st.session_state['proc_model'][i]['level2'] = selected_level2
+                                    else:
+                                        st.session_state['proc_model'][i]['level2'] = None
+                                else:
+                                    st.session_state['proc_model'][i]['level1'] = None
+                                    st.session_state['proc_model'][i]['level2'] = None
+                                
+                                # Initialize parameter request state
+                                if st.button("Request parameters") or st.session_state['proc_params_requested'][i]:
+                                    st.session_state['proc_params_requested'][i] = True
+                                    st.markdown("---")
+                                    st.markdown("### Process Parameters")
+                                    
+                                    params = st.session_state['proc_params'][i]
+                                    param_cols = st.columns([1, 1, 1, 1])
+                                    params['tin'] = param_cols[0].text_input("Tin (°C)", value=params.get('tin', ''), key=f"param_tin_sub_{i}")
+                                    params['tout'] = param_cols[1].text_input("Tout (°C)", value=params.get('tout', ''), key=f"param_tout_sub_{i}")
+                                    params['time'] = param_cols[2].text_input("Time (h)", value=params.get('time', ''), key=f"param_time_sub_{i}")
+                                    params['cp'] = param_cols[3].text_input("cp (kJ/kg·K)", value=params.get('cp', ''), key=f"param_cp_sub_{i}")
+                                    
+                                    if st.button("Calculate energy demand", key=f"calc_sub_{i}"):
+                                        try:
+                                            tin = float(params['tin'])
+                                            tout = float(params['tout'])
+                                            time = float(params['time'])
+                                            cp = float(params['cp'])
+                                            
+                                            # Example calculation: Q = m * cp * ΔT
+                                            # Assuming mass flow (m) = 1 kg/s for demonstration
+                                            delta_t = abs(tout - tin)
+                                            mass_flow = 1.0  # kg/s (placeholder)
+                                            thermal_power = mass_flow * cp * delta_t  # kW
+                                            
+                                            params['mass_flow'] = mass_flow
+                                            params['thermal_power'] = thermal_power
+                                        except (ValueError, TypeError):
+                                            st.error("Please enter valid numeric values for all parameters")
+                                    
+                                    # Display results if calculated
+                                    if params.get('mass_flow') is not None and params.get('thermal_power') is not None:
+                                        st.success(f"**Mass Flow:** {params['mass_flow']:.2f} kg/s")
+                                        st.success(f"**Thermal Power:** {params['thermal_power']:.2f} kW")
+                                    
+                                    if st.button("Import energy values", key=f"done_sub_{i}"):
+                                        st.rerun()
+                            
+                            show_subprocess_model_dialog()
+                        
+                        # Display current selection
+                        current_model = st.session_state['proc_model'][i]
+                        if current_model.get('level2'):
+                            model_display_col.caption(f"Model: {current_model['level1']} → {current_model['level2']}")
+                        elif current_model.get('level1'):
+                            model_display_col.caption(f"Model: {current_model['level1']}")
+                        else:
+                            model_display_col.caption("No model selected")
                         
                         # Custom notes field (full width)
                         p['extra_info']['notes'] = st.text_area("Notes", value=p.get('extra_info', {}).get('notes', ''), key=f"p_notes_{i}", height=80)
