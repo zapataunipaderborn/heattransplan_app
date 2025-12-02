@@ -551,7 +551,7 @@ else:
                         yaxis=dict(rangemode='tozero')
                     )
                     
-                    st.plotly_chart(fig1, use_container_width=True, key="composite_chart")
+                    st.plotly_chart(fig1, width='stretch', key="composite_chart")
                 
                 with plot_col2:
                     fig2 = go.Figure()
@@ -616,14 +616,12 @@ else:
                         yaxis=dict(rangemode='tozero')
                     )
                     
-                    st.plotly_chart(fig2, use_container_width=True, key="gcc_chart")
+                    st.plotly_chart(fig2, width='stretch', key="gcc_chart")
                 
                 # More information expander
                 with st.expander("More information"):
                     import pandas as pd
                     
-                    # Shifted Temperature Interval Diagram in Plotly
-                    st.markdown("##### Shifted Temperature Interval Diagram")
                     
                     temps = results['temperatures']
                     pinch_streams = results['streams']
@@ -737,7 +735,7 @@ else:
                             showlegend=False
                         )
                         
-                        st.plotly_chart(fig_interval, use_container_width=True, key="interval_chart")
+                        st.plotly_chart(fig_interval, width='stretch', key="interval_chart")
                     
                     st.markdown("---")
                     
@@ -755,7 +753,7 @@ else:
                             'deltaH': 'ΔH (kW)'
                         }
                         problem_df = problem_df.rename(columns={k: v for k, v in col_rename.items() if k in problem_df.columns})
-                        st.dataframe(problem_df, use_container_width=True, hide_index=True)
+                        st.dataframe(problem_df, width='stretch', hide_index=True)
                     else:
                         st.info("No problem table data available")
                     
@@ -773,7 +771,7 @@ else:
                                        'Cascade (kW)': item['exitH']}
                                 unfeasible_data.append(row)
                             unfeasible_df = pd.DataFrame(unfeasible_data)
-                            st.dataframe(unfeasible_df, use_container_width=True, hide_index=True)
+                            st.dataframe(unfeasible_df, width='stretch', hide_index=True)
                         else:
                             st.info("No unfeasible cascade data")
                     
@@ -788,7 +786,7 @@ else:
                                        'Cascade (kW)': item['exitH']}
                                 feasible_data.append(row)
                             feasible_df = pd.DataFrame(feasible_data)
-                            st.dataframe(feasible_df, use_container_width=True, hide_index=True)
+                            st.dataframe(feasible_df, width='stretch', hide_index=True)
                         else:
                             st.info("No feasible cascade data")
                 
