@@ -510,7 +510,7 @@ else:
                         title=dict(text='Composite Curves', font=dict(size=14)),
                         xaxis_title='Enthalpy H (kW)',
                         yaxis_title='Temperature T (°C)',
-                        height=350,
+                        height=450,
                         margin=dict(l=50, r=20, t=40, b=40),
                         legend=dict(x=0.7, y=0.1),
                         hovermode='closest'
@@ -575,7 +575,7 @@ else:
                         title=dict(text='Grand Composite Curve', font=dict(size=14)),
                         xaxis_title='Net ΔH (kW)',
                         yaxis_title='Shifted T (°C)',
-                        height=350,
+                        height=450,
                         margin=dict(l=50, r=20, t=40, b=40),
                         hovermode='closest'
                     )
