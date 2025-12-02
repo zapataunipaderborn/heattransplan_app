@@ -15,7 +15,7 @@ class Streams:
 
 
 
-        with open('InputCSVs' + '\\' + streamsDataFile, newline='') as f:
+        with open(streamsDataFile, newline='') as f:
             reader = csv.reader(f)
             for row in reader:
                 self._rawStreamsData.append(row)
