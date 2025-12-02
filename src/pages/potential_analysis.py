@@ -439,7 +439,8 @@ else:
                     'heat_cascade': pinch.heatCascade,
                     'unfeasible_heat_cascade': pinch.unfeasibleHeatCascade,
                     'problem_table': pinch.problemTable,
-                    'temperatures': pinch._temperatures
+                    'temperatures': pinch._temperatures,
+                    'streams': list(pinch.streams)
                 }
                 
                 # Row with toggle on left, metrics in center
@@ -618,68 +619,74 @@ else:
                 with st.expander("More information"):
                     import pandas as pd
                     
-                    # Heat Cascade Visualization
-                    st.markdown("##### Heat Cascade Diagram")
-                    cascade_plot_col1, cascade_plot_col2 = st.columns(2)
+                    # Shifted Temperature Interval Diagram
+                    st.markdown("##### Shifted Temperature Interval Diagram")
                     
-                    # Get temperatures for cascade (need one more than cascade entries)
                     temps = results['temperatures']
+                    pinch_streams = results['streams']
                     
-                    with cascade_plot_col1:
-                        # Unfeasible Heat Cascade Plot
-                        if results['unfeasible_heat_cascade'] and temps:
-                            fig_uf, ax_uf = plt.subplots(figsize=(5, 4))
+                    if pinch_streams and temps:
+                        fig_interval, ax_interval = plt.subplots(figsize=(10, 5))
+                        
+                        # Draw horizontal temperature lines
+                        num_streams = len(pinch_streams)
+                        x_max = 50 * (num_streams + 1)
+                        
+                        for temperature in temps:
+                            ax_interval.axhline(y=temperature, color='gray', linestyle=':', alpha=0.6, linewidth=0.8)
+                        
+                        # Draw pinch temperature line
+                        ax_interval.axhline(y=results['pinch_temperature'], color='black', linestyle='--', linewidth=1.5, label=f"Pinch: {results['pinch_temperature']:.1f}°C")
+                        
+                        # Draw stream arrows
+                        x_offset = 50
+                        arrow_width = num_streams * 0.8
+                        head_width = arrow_width * 8
+                        temp_range = max(temps) - min(temps) if temps else 100
+                        head_length = temp_range * 0.02
+                        
+                        for i, stream in enumerate(pinch_streams):
+                            ss = stream['ss']  # Shifted supply temp
+                            st_temp = stream['st']  # Shifted target temp
+                            stream_type = stream['type']
                             
-                            # Build cascade values including starting point (0 at top temp)
-                            cascade_uf = [0]  # Start at 0
-                            for item in results['unfeasible_heat_cascade']:
-                                cascade_uf.append(item['exitH'])
+                            # Color based on stream type
+                            color = 'red' if stream_type == 'HOT' else 'blue'
                             
-                            ax_uf.step(cascade_uf, temps, where='pre', color='orange', linewidth=2)
-                            ax_uf.plot(cascade_uf, temps, 'o', color='orange', markersize=5)
-                            ax_uf.axvline(x=0, color='black', linestyle='-', linewidth=0.5)
-                            ax_uf.axhline(y=results['pinch_temperature'], color='gray', linestyle='--', alpha=0.7)
+                            # Draw arrow
+                            arrow_height = st_temp - ss
+                            ax_interval.arrow(x_offset, ss, 0, arrow_height, 
+                                            color=color, ec='black', alpha=0.8,
+                                            length_includes_head=True, 
+                                            width=arrow_width, 
+                                            head_width=head_width, 
+                                            head_length=head_length if abs(arrow_height) > head_length * 2 else abs(arrow_height) * 0.3)
                             
-                            # Mark negative values (infeasible)
-                            for c, t in zip(cascade_uf, temps):
-                                if c < 0:
-                                    ax_uf.plot(c, t, 'o', color='red', markersize=8)
+                            # Stream label
+                            label_y = ss + arrow_height / 2
+                            ax_interval.text(x_offset, ss + 3, f"S{i+1}", 
+                                           fontsize=9, ha='center', va='bottom',
+                                           bbox=dict(boxstyle='round,pad=0.2', fc=color, ec='black', alpha=0.9),
+                                           color='white', fontweight='bold')
                             
-                            ax_uf.set_xlabel('Cascade (kW)', fontsize=10)
-                            ax_uf.set_ylabel('Temperature (°C)', fontsize=10)
-                            ax_uf.set_title('Unfeasible Heat Cascade', fontsize=11, fontweight='bold')
-                            ax_uf.grid(True, alpha=0.3)
-                            plt.tight_layout()
-                            st.pyplot(fig_uf)
-                            plt.close(fig_uf)
-                    
-                    with cascade_plot_col2:
-                        # Feasible Heat Cascade Plot
-                        if results['heat_cascade'] and temps:
-                            fig_f, ax_f = plt.subplots(figsize=(5, 4))
+                            # CP value
+                            ax_interval.text(x_offset, label_y, f"CP={stream['cp']:.1f}", 
+                                           fontsize=7, ha='center', va='center', rotation=90,
+                                           color='white', fontweight='bold')
                             
-                            # Build cascade values including starting point (hot utility at top temp)
-                            cascade_f = [results['hot_utility']]  # Start at hot utility
-                            for item in results['heat_cascade']:
-                                cascade_f.append(item['exitH'])
-                            
-                            ax_f.step(cascade_f, temps, where='pre', color='green', linewidth=2)
-                            ax_f.plot(cascade_f, temps, 'o', color='green', markersize=5)
-                            ax_f.axvline(x=0, color='black', linestyle='-', linewidth=0.5)
-                            ax_f.axhline(y=results['pinch_temperature'], color='gray', linestyle='--', alpha=0.7)
-                            
-                            # Mark pinch point (where cascade = 0)
-                            for c, t in zip(cascade_f, temps):
-                                if abs(c) < 0.01:
-                                    ax_f.plot(c, t, 'o', color='red', markersize=8)
-                            
-                            ax_f.set_xlabel('Cascade (kW)', fontsize=10)
-                            ax_f.set_ylabel('Temperature (°C)', fontsize=10)
-                            ax_f.set_title('Feasible Heat Cascade', fontsize=11, fontweight='bold')
-                            ax_f.grid(True, alpha=0.3)
-                            plt.tight_layout()
-                            st.pyplot(fig_f)
-                            plt.close(fig_f)
+                            x_offset += 50
+                        
+                        ax_interval.set_ylabel('Shifted Temperature S (°C)', fontsize=11)
+                        ax_interval.set_xlabel('Streams', fontsize=11)
+                        ax_interval.set_title('Shifted Temperature Interval Diagram', fontsize=12, fontweight='bold')
+                        ax_interval.set_xlim(0, x_max)
+                        ax_interval.set_xticks([])
+                        ax_interval.legend(loc='upper right')
+                        ax_interval.grid(True, alpha=0.3, axis='y')
+                        
+                        plt.tight_layout()
+                        st.pyplot(fig_interval)
+                        plt.close(fig_interval)
                     
                     st.markdown("---")
                     
