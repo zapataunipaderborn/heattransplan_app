@@ -998,9 +998,6 @@ with left:
                     st.markdown("<div style='height:2px; background:#888888; opacity:0.7; margin:6px 0 4px;'></div>", unsafe_allow_html=True)
                     continue
 
-                if not g_list:
-                    st.caption("(No processes in this group)")
-                
                 # Add collapsible information section for the main process (group level)
                 info_header_cols = st.columns([0.05, 0.95])
                 info_toggle_label = "▾" if st.session_state['proc_group_info_expanded'][g] else "▸"
