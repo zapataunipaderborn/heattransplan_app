@@ -433,6 +433,7 @@ else:
                     'pinch_temperature': pinch.pinchTemperature,
                     'tmin': pinch.tmin,
                     'composite_diagram': pinch.compositeDiagram,
+                    'shifted_composite_diagram': pinch.shiftedCompositeDiagram,
                     'grand_composite_curve': pinch.grandCompositeCurve,
                     'heat_cascade': pinch.heatCascade,
                     'temperatures': pinch._temperatures
@@ -452,19 +453,40 @@ else:
                 cold_streams = [s for s in streams_data if s['Tin'] < s['Tout']]
                 
                 with plot_col1:
+                    # Toggle for shifted composite curves
+                    show_shifted = st.toggle("Show Shifted Composite Curves", value=False, key="shifted_toggle")
+                    
                     fig1 = go.Figure()
                     
+                    # Select which diagram to show
+                    if show_shifted:
+                        diagram = results['shifted_composite_diagram']
+                        curve_label = "Shifted"
+                        title_text = "Shifted Composite Curves"
+                        # For shifted, temperatures are shifted by ±Tmin/2
+                        tmin_half = results['tmin'] / 2
+                    else:
+                        diagram = results['composite_diagram']
+                        curve_label = ""
+                        title_text = "Composite Curves"
+                        tmin_half = 0
+                    
                     # Hot composite curve with hover info
-                    hot_T = results['composite_diagram']['hot']['T']
-                    hot_H = results['composite_diagram']['hot']['H']
+                    hot_T = diagram['hot']['T']
+                    hot_H = diagram['hot']['H']
                     
                     # Create hover text for hot curve points
                     hot_hover = []
                     for i, (h, t) in enumerate(zip(hot_H, hot_T)):
-                        # Find streams at this temperature
-                        matching = [s['name'] for s in hot_streams if min(s['Tin'], s['Tout']) <= t <= max(s['Tin'], s['Tout'])]
+                        # Find streams at this temperature (adjust for shifted temps)
+                        if show_shifted:
+                            actual_t = t + tmin_half  # Convert back to actual temp
+                        else:
+                            actual_t = t
+                        matching = [s['name'] for s in hot_streams if min(s['Tin'], s['Tout']) <= actual_t <= max(s['Tin'], s['Tout'])]
                         stream_info = '<br>'.join(matching) if matching else 'Composite'
-                        hot_hover.append(f"<b>Hot Composite</b><br>T: {t:.1f}°C<br>H: {h:.1f} kW<br>Streams: {stream_info}")
+                        label = f"<b>Hot {curve_label}</b>" if curve_label else "<b>Hot Composite</b>"
+                        hot_hover.append(f"{label}<br>T: {t:.1f}°C<br>H: {h:.1f} kW<br>Streams: {stream_info}")
                     
                     fig1.add_trace(go.Scatter(
                         x=hot_H, y=hot_T,
@@ -477,15 +499,20 @@ else:
                     ))
                     
                     # Cold composite curve with hover info
-                    cold_T = results['composite_diagram']['cold']['T']
-                    cold_H = results['composite_diagram']['cold']['H']
+                    cold_T = diagram['cold']['T']
+                    cold_H = diagram['cold']['H']
                     
                     # Create hover text for cold curve points
                     cold_hover = []
                     for i, (h, t) in enumerate(zip(cold_H, cold_T)):
-                        matching = [s['name'] for s in cold_streams if min(s['Tin'], s['Tout']) <= t <= max(s['Tin'], s['Tout'])]
+                        if show_shifted:
+                            actual_t = t - tmin_half  # Convert back to actual temp
+                        else:
+                            actual_t = t
+                        matching = [s['name'] for s in cold_streams if min(s['Tin'], s['Tout']) <= actual_t <= max(s['Tin'], s['Tout'])]
                         stream_info = '<br>'.join(matching) if matching else 'Composite'
-                        cold_hover.append(f"<b>Cold Composite</b><br>T: {t:.1f}°C<br>H: {h:.1f} kW<br>Streams: {stream_info}")
+                        label = f"<b>Cold {curve_label}</b>" if curve_label else "<b>Cold Composite</b>"
+                        cold_hover.append(f"{label}<br>T: {t:.1f}°C<br>H: {h:.1f} kW<br>Streams: {stream_info}")
                     
                     fig1.add_trace(go.Scatter(
                         x=cold_H, y=cold_T,
@@ -507,10 +534,10 @@ else:
                     )
                     
                     fig1.update_layout(
-                        title=dict(text='Composite Curves', font=dict(size=14)),
+                        title=dict(text=title_text, font=dict(size=14)),
                         xaxis_title='Enthalpy H (kW)',
                         yaxis_title='Temperature T (°C)',
-                        height=450,
+                        height=400,
                         margin=dict(l=50, r=20, t=40, b=40),
                         legend=dict(x=0.7, y=0.1),
                         hovermode='closest'
