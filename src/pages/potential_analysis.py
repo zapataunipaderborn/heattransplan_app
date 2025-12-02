@@ -443,87 +443,77 @@ else:
                 col1.metric("Hot Utility", f"{results['hot_utility']:.2f} kW")
                 col2.metric("Cold Utility", f"{results['cold_utility']:.2f} kW")
                 col3.metric("Pinch Temp", f"{results['pinch_temperature']:.1f} °C")
-                fig1, ax1 = plt.subplots(figsize=(10, 6))
                 
-                # Plot hot composite curve
-                hot_T = results['composite_diagram']['hot']['T']
-                hot_H = results['composite_diagram']['hot']['H']
-                ax1.plot(hot_H, hot_T, 'r-', linewidth=2.5, label='Hot Composite Curve', marker='o', markersize=6)
+                # Side by side plots: Composite Curves (left) and Grand Composite Curve (right)
+                plot_col1, plot_col2 = st.columns(2)
                 
-                # Plot cold composite curve
-                cold_T = results['composite_diagram']['cold']['T']
-                cold_H = results['composite_diagram']['cold']['H']
-                ax1.plot(cold_H, cold_T, 'b-', linewidth=2.5, label='Cold Composite Curve', marker='o', markersize=6)
+                with plot_col1:
+                    fig1, ax1 = plt.subplots(figsize=(6, 5))
+                    
+                    # Plot hot composite curve
+                    hot_T = results['composite_diagram']['hot']['T']
+                    hot_H = results['composite_diagram']['hot']['H']
+                    ax1.plot(hot_H, hot_T, 'r-', linewidth=2, label='Hot', marker='o', markersize=4)
+                    
+                    # Plot cold composite curve
+                    cold_T = results['composite_diagram']['cold']['T']
+                    cold_H = results['composite_diagram']['cold']['H']
+                    ax1.plot(cold_H, cold_T, 'b-', linewidth=2, label='Cold', marker='o', markersize=4)
+                    
+                    # Pinch point line
+                    ax1.axhline(y=results['pinch_temperature'], color='gray', linestyle='--', alpha=0.7, 
+                               label=f'Pinch ({results["pinch_temperature"]:.1f}°C)')
+                    
+                    ax1.set_xlabel('Enthalpy H (kW)', fontsize=10)
+                    ax1.set_ylabel('Temperature T (°C)', fontsize=10)
+                    ax1.set_title('Composite Curves', fontsize=12, fontweight='bold')
+                    ax1.legend(fontsize=8, loc='lower right')
+                    ax1.grid(True, alpha=0.3)
+                    ax1.tick_params(axis='both', labelsize=8)
+                    
+                    plt.tight_layout()
+                    st.pyplot(fig1)
+                    plt.close(fig1)
                 
-                # Pinch point line
-                ax1.axhline(y=results['pinch_temperature'], color='gray', linestyle='--', alpha=0.7, 
-                           label=f'Pinch ({results["pinch_temperature"]:.1f}°C)')
-                
-                ax1.set_xlabel('Enthalpy H (kW)', fontsize=12)
-                ax1.set_ylabel('Temperature T (°C)', fontsize=12)
-                ax1.set_title('Composite Curves', fontsize=14, fontweight='bold')
-                ax1.legend(fontsize=10)
-                ax1.grid(True, alpha=0.3)
-                
-                # Add annotations for utilities
-                ax1.annotate(f'Hot Utility\n{results["hot_utility"]:.1f} kW', 
-                            xy=(0.02, 0.98), xycoords='axes fraction',
-                            fontsize=9, verticalalignment='top',
-                            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
-                ax1.annotate(f'Cold Utility\n{results["cold_utility"]:.1f} kW',
-                            xy=(0.98, 0.02), xycoords='axes fraction',
-                            fontsize=9, verticalalignment='bottom', horizontalalignment='right',
-                            bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.8))
-                
-                plt.tight_layout()
-                st.pyplot(fig1)
-                plt.close(fig1)
-                
-                # Grand Composite Curve Plot
-                st.markdown("#### Grand Composite Curve")
-                fig2, ax2 = plt.subplots(figsize=(10, 6))
-                
-                gcc_H = results['grand_composite_curve']['H']
-                gcc_T = results['grand_composite_curve']['T']
-                heat_cascade = results['heat_cascade']
-                temperatures = results['temperatures']
-                
-                # Plot GCC with color coding based on heat cascade
-                for i in range(len(temperatures) - 1):
-                    if i < len(heat_cascade):
-                        if heat_cascade[i]['deltaH'] > 0:
-                            color = 'red'
-                        elif heat_cascade[i]['deltaH'] < 0:
-                            color = 'blue'
+                with plot_col2:
+                    fig2, ax2 = plt.subplots(figsize=(6, 5))
+                    
+                    gcc_H = results['grand_composite_curve']['H']
+                    gcc_T = results['grand_composite_curve']['T']
+                    heat_cascade = results['heat_cascade']
+                    temperatures = results['temperatures']
+                    
+                    # Plot GCC with color coding based on heat cascade
+                    for i in range(len(temperatures) - 1):
+                        if i < len(heat_cascade):
+                            if heat_cascade[i]['deltaH'] > 0:
+                                color = 'red'
+                            elif heat_cascade[i]['deltaH'] < 0:
+                                color = 'blue'
+                            else:
+                                color = 'gray'
                         else:
                             color = 'gray'
-                    else:
-                        color = 'gray'
+                        
+                        if i + 1 < len(gcc_H):
+                            ax2.plot([gcc_H[i], gcc_H[i+1]], [gcc_T[i], gcc_T[i+1]], 
+                                    color=color, linewidth=2, marker='o', markersize=4)
                     
-                    if i + 1 < len(gcc_H):
-                        ax2.plot([gcc_H[i], gcc_H[i+1]], [gcc_T[i], gcc_T[i+1]], 
-                                color=color, linewidth=2.5, marker='o', markersize=6)
-                
-                # Pinch point line
-                ax2.axhline(y=results['pinch_temperature'], color='gray', linestyle='--', alpha=0.7,
-                           label=f'Pinch ({results["pinch_temperature"]:.1f}°C)')
-                ax2.axvline(x=0, color='black', linestyle='-', alpha=0.3)
-                
-                ax2.set_xlabel('Net Enthalpy Change ΔH (kW)', fontsize=12)
-                ax2.set_ylabel('Shifted Temperature T (°C)', fontsize=12)
-                ax2.set_title('Grand Composite Curve', fontsize=14, fontweight='bold')
-                ax2.legend(fontsize=10)
-                ax2.grid(True, alpha=0.3)
-                
-                # Add annotations
-                ax2.annotate(f'Hot Utility: {results["hot_utility"]:.1f} kW',
-                            xy=(0.02, 0.98), xycoords='axes fraction',
-                            fontsize=9, verticalalignment='top',
-                            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
-                
-                plt.tight_layout()
-                st.pyplot(fig2)
-                plt.close(fig2)
+                    # Pinch point line
+                    ax2.axhline(y=results['pinch_temperature'], color='gray', linestyle='--', alpha=0.7,
+                               label=f'Pinch ({results["pinch_temperature"]:.1f}°C)')
+                    ax2.axvline(x=0, color='black', linestyle='-', alpha=0.3)
+                    
+                    ax2.set_xlabel('Net ΔH (kW)', fontsize=10)
+                    ax2.set_ylabel('Shifted T (°C)', fontsize=10)
+                    ax2.set_title('Grand Composite Curve', fontsize=12, fontweight='bold')
+                    ax2.legend(fontsize=8, loc='lower right')
+                    ax2.grid(True, alpha=0.3)
+                    ax2.tick_params(axis='both', labelsize=8)
+                    
+                    plt.tight_layout()
+                    st.pyplot(fig2)
+                    plt.close(fig2)
                 
             except Exception as e:
                 st.error(f"Error: {str(e)}")
