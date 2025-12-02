@@ -415,18 +415,21 @@ else:
                                 else:
                                     st.success(f"✅ {proc_nm} - {strm_name}: Complete data")
         else:
-            # Tmin input - compact
-            tmin_col1, tmin_col2 = st.columns([0.3, 0.7])
-            tmin = tmin_col1.number_input(
-                "ΔTmin (°C)",
-                min_value=1.0,
-                max_value=50.0,
-                value=10.0,
-                step=1.0
-            )
-            
             # Auto-run pinch analysis
             try:
+                # Row with Tmin, toggle on left, metrics centered
+                tmin_col, toggle_col, spacer, metric1, metric2, metric3 = st.columns([0.8, 0.8, 0.2, 0.8, 0.8, 0.8])
+                
+                with tmin_col:
+                    tmin = st.number_input(
+                        "ΔTmin (°C)",
+                        min_value=1.0,
+                        max_value=50.0,
+                        value=10.0,
+                        step=1.0,
+                        key="tmin_input"
+                    )
+                
                 pinch = run_pinch_analysis(streams_data, tmin)
                 results = {
                     'hot_utility': pinch.hotUtility,
@@ -443,10 +446,8 @@ else:
                     'streams': list(pinch.streams)
                 }
                 
-                # Row with toggle on left, metrics in center
-                toggle_col, metric1, metric2, metric3 = st.columns([1.2, 1, 1, 1])
                 with toggle_col:
-                    show_shifted = st.toggle("Shifted Curves", value=False, key="shifted_toggle")
+                    show_shifted = st.toggle("Shifted", value=False, key="shifted_toggle")
                 metric1.metric("Hot Utility", f"{results['hot_utility']:.2f} kW")
                 metric2.metric("Cold Utility", f"{results['cold_utility']:.2f} kW")
                 metric3.metric("Pinch Temp", f"{results['pinch_temperature']:.1f} °C")
@@ -619,74 +620,122 @@ else:
                 with st.expander("More information"):
                     import pandas as pd
                     
-                    # Shifted Temperature Interval Diagram
+                    # Shifted Temperature Interval Diagram in Plotly
                     st.markdown("##### Shifted Temperature Interval Diagram")
                     
                     temps = results['temperatures']
                     pinch_streams = results['streams']
                     
                     if pinch_streams and temps:
-                        fig_interval, ax_interval = plt.subplots(figsize=(10, 5))
+                        fig_interval = go.Figure()
+                        
+                        num_streams = len(pinch_streams)
+                        x_positions = [(i + 1) * 1.0 for i in range(num_streams)]
                         
                         # Draw horizontal temperature lines
-                        num_streams = len(pinch_streams)
-                        x_max = 50 * (num_streams + 1)
-                        
                         for temperature in temps:
-                            ax_interval.axhline(y=temperature, color='gray', linestyle=':', alpha=0.6, linewidth=0.8)
+                            fig_interval.add_shape(
+                                type="line",
+                                x0=0, x1=num_streams + 1,
+                                y0=temperature, y1=temperature,
+                                line=dict(color="gray", width=1, dash="dot"),
+                            )
                         
                         # Draw pinch temperature line
-                        ax_interval.axhline(y=results['pinch_temperature'], color='black', linestyle='--', linewidth=1.5, label=f"Pinch: {results['pinch_temperature']:.1f}°C")
+                        fig_interval.add_shape(
+                            type="line",
+                            x0=0, x1=num_streams + 1,
+                            y0=results['pinch_temperature'], y1=results['pinch_temperature'],
+                            line=dict(color="black", width=2, dash="dash"),
+                        )
+                        fig_interval.add_annotation(
+                            x=num_streams + 0.5, y=results['pinch_temperature'],
+                            text=f"Pinch: {results['pinch_temperature']:.1f}°C",
+                            showarrow=False, font=dict(size=10),
+                            xanchor='left'
+                        )
                         
                         # Draw stream arrows
-                        x_offset = 50
-                        arrow_width = num_streams * 0.8
-                        head_width = arrow_width * 8
-                        temp_range = max(temps) - min(temps) if temps else 100
-                        head_length = temp_range * 0.02
-                        
                         for i, stream in enumerate(pinch_streams):
                             ss = stream['ss']  # Shifted supply temp
                             st_temp = stream['st']  # Shifted target temp
                             stream_type = stream['type']
+                            x_pos = x_positions[i]
                             
                             # Color based on stream type
                             color = 'red' if stream_type == 'HOT' else 'blue'
+                            stream_name = streams_data[i]['name'] if i < len(streams_data) else f'Stream {i+1}'
                             
-                            # Draw arrow
-                            arrow_height = st_temp - ss
-                            ax_interval.arrow(x_offset, ss, 0, arrow_height, 
-                                            color=color, ec='black', alpha=0.8,
-                                            length_includes_head=True, 
-                                            width=arrow_width, 
-                                            head_width=head_width, 
-                                            head_length=head_length if abs(arrow_height) > head_length * 2 else abs(arrow_height) * 0.3)
+                            # Draw arrow as a line with annotation for arrowhead
+                            fig_interval.add_trace(go.Scatter(
+                                x=[x_pos, x_pos],
+                                y=[ss, st_temp],
+                                mode='lines',
+                                line=dict(color=color, width=8),
+                                hovertemplate=f"<b>{stream_name}</b><br>" +
+                                             f"Type: {stream_type}<br>" +
+                                             f"T_supply (shifted): {ss:.1f}°C<br>" +
+                                             f"T_target (shifted): {st_temp:.1f}°C<br>" +
+                                             f"CP: {stream['cp']:.2f} kW/K<extra></extra>",
+                                showlegend=False
+                            ))
                             
-                            # Stream label
-                            label_y = ss + arrow_height / 2
-                            ax_interval.text(x_offset, ss + 3, f"S{i+1}", 
-                                           fontsize=9, ha='center', va='bottom',
-                                           bbox=dict(boxstyle='round,pad=0.2', fc=color, ec='black', alpha=0.9),
-                                           color='white', fontweight='bold')
+                            # Add arrowhead
+                            fig_interval.add_annotation(
+                                x=x_pos, y=st_temp,
+                                ax=x_pos, ay=ss,
+                                xref='x', yref='y',
+                                axref='x', ayref='y',
+                                showarrow=True,
+                                arrowhead=2,
+                                arrowsize=1.5,
+                                arrowwidth=3,
+                                arrowcolor=color
+                            )
                             
-                            # CP value
-                            ax_interval.text(x_offset, label_y, f"CP={stream['cp']:.1f}", 
-                                           fontsize=7, ha='center', va='center', rotation=90,
-                                           color='white', fontweight='bold')
+                            # Stream label at top
+                            label_y = max(ss, st_temp) + (max(temps) - min(temps)) * 0.03
+                            fig_interval.add_annotation(
+                                x=x_pos, y=label_y,
+                                text=f"<b>S{i+1}</b>",
+                                showarrow=False,
+                                font=dict(size=11, color='white'),
+                                bgcolor=color,
+                                bordercolor='black',
+                                borderwidth=1,
+                                borderpad=3
+                            )
                             
-                            x_offset += 50
+                            # CP value in middle
+                            mid_y = (ss + st_temp) / 2
+                            fig_interval.add_annotation(
+                                x=x_pos, y=mid_y,
+                                text=f"CP={stream['cp']:.1f}",
+                                showarrow=False,
+                                font=dict(size=9, color='white'),
+                                textangle=-90
+                            )
                         
-                        ax_interval.set_ylabel('Shifted Temperature S (°C)', fontsize=11)
-                        ax_interval.set_xlabel('Streams', fontsize=11)
-                        ax_interval.set_title('Shifted Temperature Interval Diagram', fontsize=12, fontweight='bold')
-                        ax_interval.set_xlim(0, x_max)
-                        ax_interval.set_xticks([])
-                        ax_interval.legend(loc='upper right')
-                        ax_interval.grid(True, alpha=0.3, axis='y')
+                        fig_interval.update_layout(
+                            title=dict(text='Shifted Temperature Interval Diagram', font=dict(size=14)),
+                            xaxis=dict(
+                                title='Streams',
+                                showticklabels=False,
+                                range=[0, num_streams + 1],
+                                showgrid=False
+                            ),
+                            yaxis=dict(
+                                title='Shifted Temperature S (°C)',
+                                showgrid=True,
+                                gridcolor='rgba(0,0,0,0.1)'
+                            ),
+                            height=400,
+                            margin=dict(l=60, r=20, t=40, b=40),
+                            hovermode='closest',
+                            showlegend=False
+                        )
                         
-                        plt.tight_layout()
-                        st.pyplot(fig_interval)
-                        plt.close(fig_interval)
+                        st.plotly_chart(fig_interval, use_container_width=True, key="interval_chart")
                     
                     st.markdown("---")
                     
