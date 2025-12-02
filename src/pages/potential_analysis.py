@@ -43,22 +43,22 @@ st.markdown(
     
     /* Smaller fonts and elements - apply to all elements */
     html, body, .stApp, * {font-size:11px !important;}
-    .stMarkdown p, .stMarkdown span, .stMarkdown li {font-size:11px !important;}
+    .stMarkdown p, .stMarkdown span, .stMarkdown li {font-size:11px !important; margin:0 !important; padding:0 !important;}
     .stButton button {font-size:10px !important; padding:0.1rem 0.3rem !important;}
     .stTextInput input, .stNumberInput input {font-size:10px !important; padding:0.1rem 0.2rem !important;}
     h1 {font-size: 1.5rem !important; margin-bottom: 0.3rem !important;}
+    /* Compact layout */
+    .block-container {padding-top: 1rem !important; padding-bottom: 0 !important;}
+    div[data-testid="stVerticalBlock"] > div {padding: 0 !important; margin: 0 !important;}
+    hr {margin: 0.3rem 0 !important;}
+    .stCheckbox {margin: 0 !important; padding: 0 !important;}
+    div[data-testid="stHorizontalBlock"] {gap: 0.2rem !important;}
     </style>
     """,
     unsafe_allow_html=True,
 )
 
 st.title("Potential Analysis")
-
-st.markdown(
-    """
-Select the streams and products you want to include in the analysis.
-"""
-)
 
 # Initialize session state for selections if not exists
 if 'selected_items' not in st.session_state:
@@ -198,8 +198,6 @@ else:
                     stream_cols[2].caption(' | '.join(display_parts))
                 else:
                     stream_cols[2].caption("(incomplete data)")
-            
-            st.divider()
     
     # Count selected streams
     selected_count = sum(1 for k, v in st.session_state['selected_items'].items() 
@@ -209,7 +207,6 @@ else:
     # PINCH ANALYSIS SECTION
     # =====================================================
     st.markdown("---")
-    st.markdown("### Pinch Analysis")
     
     if not PINCH_AVAILABLE:
         st.error(f"Pinch analysis module not available: {PINCH_IMPORT_ERROR or 'Unknown error'}")
@@ -417,63 +414,35 @@ else:
                                 else:
                                     st.success(f"✅ {proc_nm} - {strm_name}: Complete data")
         else:
-            # Show extracted streams data
-            st.markdown("**Streams data for pinch analysis:**")
-            for s in streams_data:
-                stream_type = "HOT" if s['Tin'] > s['Tout'] else "COLD"
-                st.caption(f"• {s['name']}: CP={s['CP']:.2f} kW/K, Tin={s['Tin']}°C, Tout={s['Tout']}°C ({stream_type})")
-            
-            # Tmin input
-            tmin = st.number_input(
-                "Minimum approach temperature ΔTmin (°C)",
+            # Tmin input - compact
+            tmin_col1, tmin_col2 = st.columns([0.3, 0.7])
+            tmin = tmin_col1.number_input(
+                "ΔTmin (°C)",
                 min_value=1.0,
                 max_value=50.0,
                 value=10.0,
-                step=1.0,
-                help="Minimum temperature difference between hot and cold streams at the pinch point"
+                step=1.0
             )
             
-            # Run analysis button
-            if st.button("🔥 Run Pinch Analysis", type="primary"):
-                try:
-                    with st.spinner("Running pinch analysis..."):
-                        pinch = run_pinch_analysis(streams_data, tmin)
-                    
-                    # Store results in session state
-                    st.session_state['pinch_results'] = {
-                        'hot_utility': pinch.hotUtility,
-                        'cold_utility': pinch.coldUtility,
-                        'pinch_temperature': pinch.pinchTemperature,
-                        'tmin': pinch.tmin,
-                        'composite_diagram': pinch.compositeDiagram,
-                        'grand_composite_curve': pinch.grandCompositeCurve,
-                        'heat_cascade': pinch.heatCascade,
-                        'temperatures': pinch._temperatures
-                    }
-                    
-                    st.success("Pinch analysis completed successfully!")
-                    st.rerun()
-                    
-                except Exception as e:
-                    st.error(f"Error running pinch analysis: {str(e)}")
-                    import traceback
-                    st.code(traceback.format_exc())
-            
-            # Display results if available
-            if 'pinch_results' in st.session_state:
-                results = st.session_state['pinch_results']
+            # Auto-run pinch analysis
+            try:
+                pinch = run_pinch_analysis(streams_data, tmin)
+                results = {
+                    'hot_utility': pinch.hotUtility,
+                    'cold_utility': pinch.coldUtility,
+                    'pinch_temperature': pinch.pinchTemperature,
+                    'tmin': pinch.tmin,
+                    'composite_diagram': pinch.compositeDiagram,
+                    'grand_composite_curve': pinch.grandCompositeCurve,
+                    'heat_cascade': pinch.heatCascade,
+                    'temperatures': pinch._temperatures
+                }
                 
-                # Key results
-                st.markdown("#### Key Results")
+                # Key results - compact
                 col1, col2, col3 = st.columns(3)
                 col1.metric("Hot Utility", f"{results['hot_utility']:.2f} kW")
                 col2.metric("Cold Utility", f"{results['cold_utility']:.2f} kW")
-                col3.metric("Pinch Temperature", f"{results['pinch_temperature']:.1f} °C")
-                
-                st.caption(f"ΔTmin = {results['tmin']}°C")
-                
-                # Composite Curves Plot
-                st.markdown("#### Composite Curves")
+                col3.metric("Pinch Temp", f"{results['pinch_temperature']:.1f} °C")
                 fig1, ax1 = plt.subplots(figsize=(10, 6))
                 
                 # Plot hot composite curve
@@ -556,7 +525,5 @@ else:
                 st.pyplot(fig2)
                 plt.close(fig2)
                 
-                # Clear results button
-                if st.button("🗑️ Clear Results"):
-                    del st.session_state['pinch_results']
-                    st.rerun()
+            except Exception as e:
+                st.error(f"Error: {str(e)}")
