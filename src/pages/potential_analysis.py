@@ -2,6 +2,7 @@ import streamlit as st
 import sys
 import os
 import plotly.graph_objects as go
+import matplotlib.pyplot as plt
 import tempfile
 import csv
 
@@ -436,6 +437,8 @@ else:
                     'shifted_composite_diagram': pinch.shiftedCompositeDiagram,
                     'grand_composite_curve': pinch.grandCompositeCurve,
                     'heat_cascade': pinch.heatCascade,
+                    'unfeasible_heat_cascade': pinch.unfeasibleHeatCascade,
+                    'problem_table': pinch.problemTable,
                     'temperatures': pinch._temperatures
                 }
                 
@@ -537,12 +540,14 @@ else:
                         xaxis_title='Enthalpy H (kW)',
                         yaxis_title='Temperature T (°C)',
                         height=400,
-                        margin=dict(l=50, r=20, t=40, b=40),
+                        margin=dict(l=60, r=20, t=40, b=50),
                         legend=dict(x=0.7, y=0.1),
-                        hovermode='closest'
+                        hovermode='closest',
+                        xaxis=dict(rangemode='tozero'),
+                        yaxis=dict(rangemode='tozero')
                     )
                     
-                    st.plotly_chart(fig1, use_container_width=True)
+                    st.plotly_chart(fig1, use_container_width=True, key="composite_chart")
                 
                 with plot_col2:
                     fig2 = go.Figure()
@@ -601,12 +606,133 @@ else:
                         title=dict(text='Grand Composite Curve', font=dict(size=14)),
                         xaxis_title='Net ΔH (kW)',
                         yaxis_title='Shifted Temperature (°C)',
-                        height=450,
-                        margin=dict(l=50, r=20, t=40, b=40),
-                        hovermode='closest'
+                        height=400,
+                        margin=dict(l=60, r=20, t=40, b=50),
+                        hovermode='closest',
+                        yaxis=dict(rangemode='tozero')
                     )
                     
-                    st.plotly_chart(fig2, use_container_width=True)
+                    st.plotly_chart(fig2, use_container_width=True, key="gcc_chart")
+                
+                # More information expander
+                with st.expander("More information"):
+                    import pandas as pd
+                    
+                    # Heat Cascade Visualization
+                    st.markdown("##### Heat Cascade Diagram")
+                    cascade_plot_col1, cascade_plot_col2 = st.columns(2)
+                    
+                    # Get temperatures for cascade (need one more than cascade entries)
+                    temps = results['temperatures']
+                    
+                    with cascade_plot_col1:
+                        # Unfeasible Heat Cascade Plot
+                        if results['unfeasible_heat_cascade'] and temps:
+                            fig_uf, ax_uf = plt.subplots(figsize=(5, 4))
+                            
+                            # Build cascade values including starting point (0 at top temp)
+                            cascade_uf = [0]  # Start at 0
+                            for item in results['unfeasible_heat_cascade']:
+                                cascade_uf.append(item['exitH'])
+                            
+                            ax_uf.step(cascade_uf, temps, where='pre', color='orange', linewidth=2)
+                            ax_uf.plot(cascade_uf, temps, 'o', color='orange', markersize=5)
+                            ax_uf.axvline(x=0, color='black', linestyle='-', linewidth=0.5)
+                            ax_uf.axhline(y=results['pinch_temperature'], color='gray', linestyle='--', alpha=0.7)
+                            
+                            # Mark negative values (infeasible)
+                            for c, t in zip(cascade_uf, temps):
+                                if c < 0:
+                                    ax_uf.plot(c, t, 'o', color='red', markersize=8)
+                            
+                            ax_uf.set_xlabel('Cascade (kW)', fontsize=10)
+                            ax_uf.set_ylabel('Temperature (°C)', fontsize=10)
+                            ax_uf.set_title('Unfeasible Heat Cascade', fontsize=11, fontweight='bold')
+                            ax_uf.grid(True, alpha=0.3)
+                            plt.tight_layout()
+                            st.pyplot(fig_uf)
+                            plt.close(fig_uf)
+                    
+                    with cascade_plot_col2:
+                        # Feasible Heat Cascade Plot
+                        if results['heat_cascade'] and temps:
+                            fig_f, ax_f = plt.subplots(figsize=(5, 4))
+                            
+                            # Build cascade values including starting point (hot utility at top temp)
+                            cascade_f = [results['hot_utility']]  # Start at hot utility
+                            for item in results['heat_cascade']:
+                                cascade_f.append(item['exitH'])
+                            
+                            ax_f.step(cascade_f, temps, where='pre', color='green', linewidth=2)
+                            ax_f.plot(cascade_f, temps, 'o', color='green', markersize=5)
+                            ax_f.axvline(x=0, color='black', linestyle='-', linewidth=0.5)
+                            ax_f.axhline(y=results['pinch_temperature'], color='gray', linestyle='--', alpha=0.7)
+                            
+                            # Mark pinch point (where cascade = 0)
+                            for c, t in zip(cascade_f, temps):
+                                if abs(c) < 0.01:
+                                    ax_f.plot(c, t, 'o', color='red', markersize=8)
+                            
+                            ax_f.set_xlabel('Cascade (kW)', fontsize=10)
+                            ax_f.set_ylabel('Temperature (°C)', fontsize=10)
+                            ax_f.set_title('Feasible Heat Cascade', fontsize=11, fontweight='bold')
+                            ax_f.grid(True, alpha=0.3)
+                            plt.tight_layout()
+                            st.pyplot(fig_f)
+                            plt.close(fig_f)
+                    
+                    st.markdown("---")
+                    
+                    # Problem Table
+                    st.markdown("##### Problem Table")
+                    if results['problem_table']:
+                        problem_df = pd.DataFrame(results['problem_table'])
+                        # Rename columns for clarity
+                        col_rename = {
+                            'T': 'T (°C)',
+                            'deltaT': 'ΔT (°C)',
+                            'cpHot': 'ΣCP Hot (kW/K)',
+                            'cpCold': 'ΣCP Cold (kW/K)',
+                            'deltaCp': 'ΔCP (kW/K)',
+                            'deltaH': 'ΔH (kW)'
+                        }
+                        problem_df = problem_df.rename(columns={k: v for k, v in col_rename.items() if k in problem_df.columns})
+                        st.dataframe(problem_df, use_container_width=True, hide_index=True)
+                    else:
+                        st.info("No problem table data available")
+                    
+                    # Heat Cascades side by side
+                    cascade_col1, cascade_col2 = st.columns(2)
+                    
+                    with cascade_col1:
+                        st.markdown("##### Unfeasible Heat Cascade")
+                        if results['unfeasible_heat_cascade']:
+                            # Add temperature column to dataframe
+                            unfeasible_data = []
+                            for i, item in enumerate(results['unfeasible_heat_cascade']):
+                                row = {'T (°C)': temps[i+1] if i+1 < len(temps) else '', 
+                                       'ΔH (kW)': item['deltaH'], 
+                                       'Cascade (kW)': item['exitH']}
+                                unfeasible_data.append(row)
+                            unfeasible_df = pd.DataFrame(unfeasible_data)
+                            st.dataframe(unfeasible_df, use_container_width=True, hide_index=True)
+                        else:
+                            st.info("No unfeasible cascade data")
+                    
+                    with cascade_col2:
+                        st.markdown("##### Feasible Heat Cascade")
+                        if results['heat_cascade']:
+                            # Add temperature column to dataframe
+                            feasible_data = []
+                            for i, item in enumerate(results['heat_cascade']):
+                                row = {'T (°C)': temps[i+1] if i+1 < len(temps) else '', 
+                                       'ΔH (kW)': item['deltaH'], 
+                                       'Cascade (kW)': item['exitH']}
+                                feasible_data.append(row)
+                            feasible_df = pd.DataFrame(feasible_data)
+                            st.dataframe(feasible_df, use_container_width=True, hide_index=True)
+                        else:
+                            st.info("No feasible cascade data")
                 
             except Exception as e:
                 st.error(f"Error: {str(e)}")
