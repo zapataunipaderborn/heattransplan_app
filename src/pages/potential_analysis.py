@@ -439,11 +439,13 @@ else:
                     'temperatures': pinch._temperatures
                 }
                 
-                # Key results - compact
-                col1, col2, col3 = st.columns(3)
-                col1.metric("Hot Utility", f"{results['hot_utility']:.2f} kW")
-                col2.metric("Cold Utility", f"{results['cold_utility']:.2f} kW")
-                col3.metric("Pinch Temp", f"{results['pinch_temperature']:.1f} °C")
+                # Row with toggle on left, metrics in center
+                toggle_col, metric1, metric2, metric3 = st.columns([1.2, 1, 1, 1])
+                with toggle_col:
+                    show_shifted = st.toggle("Shifted Curves", value=False, key="shifted_toggle")
+                metric1.metric("Hot Utility", f"{results['hot_utility']:.2f} kW")
+                metric2.metric("Cold Utility", f"{results['cold_utility']:.2f} kW")
+                metric3.metric("Pinch Temp", f"{results['pinch_temperature']:.1f} °C")
                 
                 # Side by side plots: Composite Curves (left) and Grand Composite Curve (right)
                 plot_col1, plot_col2 = st.columns(2)
@@ -453,9 +455,6 @@ else:
                 cold_streams = [s for s in streams_data if s['Tin'] < s['Tout']]
                 
                 with plot_col1:
-                    # Toggle for shifted composite curves
-                    show_shifted = st.toggle("Show Shifted Composite Curves", value=False, key="shifted_toggle")
-                    
                     fig1 = go.Figure()
                     
                     # Select which diagram to show
@@ -601,7 +600,7 @@ else:
                     fig2.update_layout(
                         title=dict(text='Grand Composite Curve', font=dict(size=14)),
                         xaxis_title='Net ΔH (kW)',
-                        yaxis_title='Shifted T (°C)',
+                        yaxis_title='Shifted Temperature (°C)',
                         height=450,
                         margin=dict(l=50, r=20, t=40, b=40),
                         hovermode='closest'
