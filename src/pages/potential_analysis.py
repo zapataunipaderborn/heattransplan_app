@@ -417,17 +417,21 @@ else:
         else:
             # Auto-run pinch analysis
             try:
-                # Row with Tmin, toggle on left, metrics centered
-                tmin_col, toggle_col, spacer, metric1, metric2, metric3 = st.columns([0.8, 0.8, 0.2, 0.8, 0.8, 0.8])
+                # Row: Shifted toggle | ΔTmin (small) | spacer | Hot Utility | Cold Utility | Pinch Temp
+                toggle_col, tmin_col, spacer, metric1, metric2, metric3 = st.columns([0.6, 0.5, 0.4, 0.7, 0.7, 0.7])
+                
+                with toggle_col:
+                    show_shifted = st.toggle("Show Shifted Composite Curves", value=False, key="shifted_toggle")
                 
                 with tmin_col:
                     tmin = st.number_input(
-                        "ΔTmin (°C)",
+                        "ΔTmin",
                         min_value=1.0,
                         max_value=50.0,
                         value=10.0,
                         step=1.0,
-                        key="tmin_input"
+                        key="tmin_input",
+                        format="%.0f"
                     )
                 
                 pinch = run_pinch_analysis(streams_data, tmin)
@@ -446,8 +450,6 @@ else:
                     'streams': list(pinch.streams)
                 }
                 
-                with toggle_col:
-                    show_shifted = st.toggle("Shifted", value=False, key="shifted_toggle")
                 metric1.metric("Hot Utility", f"{results['hot_utility']:.2f} kW")
                 metric2.metric("Cold Utility", f"{results['cold_utility']:.2f} kW")
                 metric3.metric("Pinch Temp", f"{results['pinch_temperature']:.1f} °C")
