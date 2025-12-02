@@ -1,0 +1,3 @@
+include:
+  - project: 'est/est-repo-templates/gitlab-ci-templates'
+    file: 'python/python-default.gitlab-ci.yml'
