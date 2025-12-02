@@ -1,7 +1,7 @@
 import streamlit as st
 import sys
 import os
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 import tempfile
 import csv
 
@@ -447,44 +447,97 @@ else:
                 # Side by side plots: Composite Curves (left) and Grand Composite Curve (right)
                 plot_col1, plot_col2 = st.columns(2)
                 
+                # Build hover text for streams
+                hot_streams = [s for s in streams_data if s['Tin'] > s['Tout']]
+                cold_streams = [s for s in streams_data if s['Tin'] < s['Tout']]
+                
                 with plot_col1:
-                    fig1, ax1 = plt.subplots(figsize=(6, 5))
+                    fig1 = go.Figure()
                     
-                    # Plot hot composite curve
+                    # Hot composite curve with hover info
                     hot_T = results['composite_diagram']['hot']['T']
                     hot_H = results['composite_diagram']['hot']['H']
-                    ax1.plot(hot_H, hot_T, 'r-', linewidth=2, label='Hot', marker='o', markersize=4)
                     
-                    # Plot cold composite curve
+                    # Create hover text for hot curve points
+                    hot_hover = []
+                    for i, (h, t) in enumerate(zip(hot_H, hot_T)):
+                        # Find streams at this temperature
+                        matching = [s['name'] for s in hot_streams if min(s['Tin'], s['Tout']) <= t <= max(s['Tin'], s['Tout'])]
+                        stream_info = '<br>'.join(matching) if matching else 'Composite'
+                        hot_hover.append(f"<b>Hot Composite</b><br>T: {t:.1f}°C<br>H: {h:.1f} kW<br>Streams: {stream_info}")
+                    
+                    fig1.add_trace(go.Scatter(
+                        x=hot_H, y=hot_T,
+                        mode='lines+markers',
+                        name='Hot',
+                        line=dict(color='red', width=2),
+                        marker=dict(size=6),
+                        hovertemplate='%{text}<extra></extra>',
+                        text=hot_hover
+                    ))
+                    
+                    # Cold composite curve with hover info
                     cold_T = results['composite_diagram']['cold']['T']
                     cold_H = results['composite_diagram']['cold']['H']
-                    ax1.plot(cold_H, cold_T, 'b-', linewidth=2, label='Cold', marker='o', markersize=4)
                     
-                    # Pinch point line
-                    ax1.axhline(y=results['pinch_temperature'], color='gray', linestyle='--', alpha=0.7, 
-                               label=f'Pinch ({results["pinch_temperature"]:.1f}°C)')
+                    # Create hover text for cold curve points
+                    cold_hover = []
+                    for i, (h, t) in enumerate(zip(cold_H, cold_T)):
+                        matching = [s['name'] for s in cold_streams if min(s['Tin'], s['Tout']) <= t <= max(s['Tin'], s['Tout'])]
+                        stream_info = '<br>'.join(matching) if matching else 'Composite'
+                        cold_hover.append(f"<b>Cold Composite</b><br>T: {t:.1f}°C<br>H: {h:.1f} kW<br>Streams: {stream_info}")
                     
-                    ax1.set_xlabel('Enthalpy H (kW)', fontsize=10)
-                    ax1.set_ylabel('Temperature T (°C)', fontsize=10)
-                    ax1.set_title('Composite Curves', fontsize=12, fontweight='bold')
-                    ax1.legend(fontsize=8, loc='lower right')
-                    ax1.grid(True, alpha=0.3)
-                    ax1.tick_params(axis='both', labelsize=8)
+                    fig1.add_trace(go.Scatter(
+                        x=cold_H, y=cold_T,
+                        mode='lines+markers',
+                        name='Cold',
+                        line=dict(color='blue', width=2),
+                        marker=dict(size=6),
+                        hovertemplate='%{text}<extra></extra>',
+                        text=cold_hover
+                    ))
                     
-                    plt.tight_layout()
-                    st.pyplot(fig1)
-                    plt.close(fig1)
+                    # Pinch temperature line
+                    fig1.add_hline(
+                        y=results['pinch_temperature'],
+                        line_dash='dash',
+                        line_color='gray',
+                        annotation_text=f"Pinch: {results['pinch_temperature']:.1f}°C",
+                        annotation_position='top right'
+                    )
+                    
+                    fig1.update_layout(
+                        title=dict(text='Composite Curves', font=dict(size=14)),
+                        xaxis_title='Enthalpy H (kW)',
+                        yaxis_title='Temperature T (°C)',
+                        height=350,
+                        margin=dict(l=50, r=20, t=40, b=40),
+                        legend=dict(x=0.7, y=0.1),
+                        hovermode='closest'
+                    )
+                    
+                    st.plotly_chart(fig1, use_container_width=True)
                 
                 with plot_col2:
-                    fig2, ax2 = plt.subplots(figsize=(6, 5))
+                    fig2 = go.Figure()
                     
                     gcc_H = results['grand_composite_curve']['H']
                     gcc_T = results['grand_composite_curve']['T']
                     heat_cascade = results['heat_cascade']
                     temperatures = results['temperatures']
                     
-                    # Plot GCC with color coding based on heat cascade
-                    for i in range(len(temperatures) - 1):
+                    # Create hover text for GCC points
+                    gcc_hover = []
+                    for i, (h, t) in enumerate(zip(gcc_H, gcc_T)):
+                        if i < len(heat_cascade):
+                            dh = heat_cascade[i]['deltaH']
+                            region = 'Heat deficit (needs heating)' if dh > 0 else ('Heat surplus (needs cooling)' if dh < 0 else 'Balanced')
+                        else:
+                            region = ''
+                        gcc_hover.append(f"<b>GCC</b><br>Shifted T: {t:.1f}°C<br>Net ΔH: {h:.1f} kW<br>{region}")
+                    
+                    # Plot GCC with color segments
+                    for i in range(len(gcc_H) - 1):
                         if i < len(heat_cascade):
                             if heat_cascade[i]['deltaH'] > 0:
                                 color = 'red'
@@ -495,25 +548,39 @@ else:
                         else:
                             color = 'gray'
                         
-                        if i + 1 < len(gcc_H):
-                            ax2.plot([gcc_H[i], gcc_H[i+1]], [gcc_T[i], gcc_T[i+1]], 
-                                    color=color, linewidth=2, marker='o', markersize=4)
+                        fig2.add_trace(go.Scatter(
+                            x=[gcc_H[i], gcc_H[i+1]],
+                            y=[gcc_T[i], gcc_T[i+1]],
+                            mode='lines+markers',
+                            line=dict(color=color, width=2),
+                            marker=dict(size=6, color=color),
+                            hovertemplate='%{text}<extra></extra>',
+                            text=[gcc_hover[i], gcc_hover[i+1] if i+1 < len(gcc_hover) else ''],
+                            showlegend=False
+                        ))
                     
-                    # Pinch point line
-                    ax2.axhline(y=results['pinch_temperature'], color='gray', linestyle='--', alpha=0.7,
-                               label=f'Pinch ({results["pinch_temperature"]:.1f}°C)')
-                    ax2.axvline(x=0, color='black', linestyle='-', alpha=0.3)
+                    # Pinch temperature line
+                    fig2.add_hline(
+                        y=results['pinch_temperature'],
+                        line_dash='dash',
+                        line_color='gray',
+                        annotation_text=f"Pinch: {results['pinch_temperature']:.1f}°C",
+                        annotation_position='top right'
+                    )
                     
-                    ax2.set_xlabel('Net ΔH (kW)', fontsize=10)
-                    ax2.set_ylabel('Shifted T (°C)', fontsize=10)
-                    ax2.set_title('Grand Composite Curve', fontsize=12, fontweight='bold')
-                    ax2.legend(fontsize=8, loc='lower right')
-                    ax2.grid(True, alpha=0.3)
-                    ax2.tick_params(axis='both', labelsize=8)
+                    # Zero enthalpy line
+                    fig2.add_vline(x=0, line_color='black', line_width=1, opacity=0.3)
                     
-                    plt.tight_layout()
-                    st.pyplot(fig2)
-                    plt.close(fig2)
+                    fig2.update_layout(
+                        title=dict(text='Grand Composite Curve', font=dict(size=14)),
+                        xaxis_title='Net ΔH (kW)',
+                        yaxis_title='Shifted T (°C)',
+                        height=350,
+                        margin=dict(l=50, r=20, t=40, b=40),
+                        hovermode='closest'
+                    )
+                    
+                    st.plotly_chart(fig2, use_container_width=True)
                 
             except Exception as e:
                 st.error(f"Error: {str(e)}")
