@@ -953,9 +953,12 @@ with left:
                 if gh_cols[0].button(g_toggle_label, key=f"group_toggle_{g}"):
                     new_state = not st.session_state['proc_group_expanded'][g]
                     st.session_state['proc_group_expanded'][g] = new_state
-                    # If collapsing, also collapse the subprocess map view
+                    # If collapsing, also collapse the subprocess map view and all sub-subprocess map views
                     if not new_state:
                         st.session_state['process_subprocess_map_expanded'][g] = False
+                        # Also collapse all sub-subprocess map views for subprocesses in this group
+                        for subprocess_idx in g_list:
+                            st.session_state['subprocess_map_expanded'][subprocess_idx] = False
                     st.rerun()
                 default_name = st.session_state['proc_group_names'][g]
                 new_name = gh_cols[1].text_input("Group name", value=default_name, key=f"group_name_{g}", label_visibility="collapsed", placeholder=f"Group {g+1}")
