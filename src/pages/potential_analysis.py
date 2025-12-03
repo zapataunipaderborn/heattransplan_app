@@ -165,19 +165,453 @@ def generate_process_level_map():
     return base_img
 
 def generate_subprocess_level_map():
-    """Generate a map image showing subprocesses - uses the actual rendered canvas from data_collection."""
+    """Generate a map image showing subprocesses with all connections, energy data, colors, arrows - exactly like data_collection.py"""
+    import math
     
-    # First, try to use the saved subprocess canvas image from data_collection
-    # This has ALL the correct styling: connections, energy data, colors, arrows, etc.
-    subprocess_canvas_bytes = st.session_state.get('subprocess_canvas_image')
-    if subprocess_canvas_bytes:
+    snapshots_dict = st.session_state.get('map_snapshots', {})
+    active_base = st.session_state.get('current_base', 'OpenStreetMap')
+    
+    if active_base == 'Blank':
+        base_img = Image.new('RGBA', (800, 600), (242, 242, 243, 255))
+    else:
+        chosen_bytes = snapshots_dict.get(active_base) or st.session_state.get('map_snapshot')
+        if not chosen_bytes:
+            return None
+        base_img = Image.open(BytesIO(chosen_bytes)).convert("RGBA")
+    
+    w, h = base_img.size
+    draw = ImageDraw.Draw(base_img)
+    
+    # Load font
+    BOX_FONT_SIZE = 20
+    try:
+        font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", BOX_FONT_SIZE)
+    except (OSError, IOError):
         try:
-            return Image.open(BytesIO(subprocess_canvas_bytes)).convert("RGBA")
-        except Exception:
-            pass  # Fall back to generating the image
+            font = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", BOX_FONT_SIZE)
+        except (OSError, IOError):
+            try:
+                font = ImageFont.truetype("DejaVuSans.ttf", BOX_FONT_SIZE)
+            except (OSError, IOError):
+                font = ImageFont.load_default()
     
-    # Fallback: if no saved canvas, return None (user needs to open subprocess view in data collection first)
-    return None
+    processes = st.session_state.get('processes', [])
+    map_center = st.session_state.get('map_center', [0, 0])
+    map_zoom = st.session_state.get('map_zoom', 17.5)
+    proc_groups = st.session_state.get('proc_groups', [])
+    proc_group_names = st.session_state.get('proc_group_names', [])
+    
+    if not processes:
+        return None
+    
+    # Create mapping of subprocess index to group index
+    subprocess_to_group = {}
+    for group_idx, group_subprocess_list in enumerate(proc_groups):
+        for subprocess_idx in group_subprocess_list:
+            subprocess_to_group[subprocess_idx] = group_idx
+    
+    # Draw white canvas overlay (90% of screen, centered) - ALWAYS show for report
+    overlay_w = int(w * 0.9)
+    overlay_h = int(h * 0.9)
+    center_px = w // 2
+    center_py = h // 2
+    overlay_x0 = int(center_px - overlay_w / 2)
+    overlay_y0 = int(center_py - overlay_h / 2)
+    overlay_x1 = overlay_x0 + overlay_w
+    overlay_y1 = overlay_y0 + overlay_h
+    
+    margin = 20
+    overlay_x0 = max(margin, overlay_x0)
+    overlay_y0 = max(margin, overlay_y0)
+    overlay_x1 = min(w - margin, overlay_x1)
+    overlay_y1 = min(h - margin, overlay_y1)
+    
+    draw.rectangle([overlay_x0, overlay_y0, overlay_x1, overlay_y1], 
+                 fill=(250, 250, 250, 40),
+                 outline=(245, 245, 245, 80), 
+                 width=1)
+    
+    # Add process area label
+    if proc_group_names:
+        overlay_label = f"Process Area: {proc_group_names[0]}" if len(proc_group_names) == 1 else "Subprocess View"
+        if font:
+            label_bbox = draw.textbbox((0, 0), overlay_label, font=font)
+            label_w = label_bbox[2] - label_bbox[0]
+            label_h = label_bbox[3] - label_bbox[1]
+        else:
+            label_w = len(overlay_label) * 6
+            label_h = 10
+        
+        label_x = overlay_x0 + 15
+        label_y = overlay_y0 + 15
+        
+        draw.rectangle([label_x-5, label_y-3, label_x+label_w+5, label_y+label_h+3], 
+                     fill=(255, 255, 255, 120), 
+                     outline=(220, 220, 220, 100), 
+                     width=1)
+        
+        if font:
+            draw.text((label_x, label_y), overlay_label, fill=(40, 40, 40, 255), font=font)
+        else:
+            draw.text((label_x, label_y), overlay_label, fill=(40, 40, 40, 255))
+    
+    # Collect all positioned subprocesses (show ALL, not just expanded ones)
+    positioned = []
+    name_index = {}
+    
+    for i, p in enumerate(processes):
+        lat = p.get('lat')
+        lon = p.get('lon')
+        if lat in (None, "", "None") or lon in (None, "", "None"):
+            continue
+        
+        try:
+            lat_f = float(lat)
+            lon_f = float(lon)
+            proc_px, proc_py = snapshot_lonlat_to_pixel(
+                lon_f, lat_f,
+                (map_center[1], map_center[0]),
+                map_zoom, w, h
+            )
+            if proc_px < -50 or proc_py < -20 or proc_px > w + 50 or proc_py > h + 20:
+                continue
+            
+            label = p.get('name') or f"P{i+1}"
+            scale = float(p.get('box_scale', 6.0) or 6.0)
+            base_padding = 18
+            padding = int(base_padding * scale)
+            text_bbox = draw.textbbox((0, 0), label, font=font) if font else (0, 0, len(label) * 6, 10)
+            tw = text_bbox[2] - text_bbox[0]
+            th = text_bbox[3] - text_bbox[1]
+            box_w = int(tw * scale + padding * 2)
+            box_h = int(th * scale + padding * 2)
+            x0 = int(proc_px - box_w / 2)
+            y0 = int(proc_py - box_h / 2)
+            x1 = x0 + box_w
+            y1 = y0 + box_h
+            
+            if x1 < 0 or y1 < 0 or x0 > w or y0 > h:
+                continue
+            
+            positioned.append({
+                'idx': i,
+                'label': label,
+                'center': (proc_px, proc_py),
+                'box': (x0, y0, x1, y1),
+                'next_raw': p.get('next', '') or '',
+                'type': 'subprocess'
+            })
+            lname = label.strip().lower()
+            name_index.setdefault(lname, []).append(len(positioned) - 1)
+        except (ValueError, TypeError):
+            continue
+    
+    # Helper: draw arrow with head
+    def _draw_arrow(draw_ctx, x_start, y_start, x_end, y_end, color=(0, 0, 0, 255), width=3, head_len=18, head_angle_deg=30):
+        draw_ctx.line([(x_start, y_start), (x_end, y_end)], fill=color, width=width, joint='curve')
+        ang = math.atan2(y_end - y_start, x_end - x_start)
+        ang_left = ang - math.radians(head_angle_deg)
+        ang_right = ang + math.radians(head_angle_deg)
+        x_left = x_end - head_len * math.cos(ang_left)
+        y_left = y_end - head_len * math.sin(ang_left)
+        x_right = x_end - head_len * math.cos(ang_right)
+        y_right = y_end - head_len * math.sin(ang_right)
+        draw_ctx.polygon([(x_end, y_end), (x_left, y_left), (x_right, y_right)], fill=color)
+    
+    def _resolve_targets(target_token, positioned_list, name_idx):
+        target_token = target_token.strip()
+        if not target_token:
+            return []
+        if target_token.isdigit():
+            idx_int = int(target_token) - 1
+            for d in positioned_list:
+                if d['idx'] == idx_int:
+                    return [d]
+            return []
+        lname2 = target_token.lower()
+        if lname2 in name_idx:
+            return [positioned_list[i] for i in name_idx[lname2]]
+        return [d for d in positioned_list if d['label'].lower() == lname2]
+    
+    # Draw connection arrows and collect product stream info
+    connection_product_streams = []
+    
+    for src in positioned:
+        raw_next = src['next_raw']
+        if not raw_next:
+            continue
+        parts = []
+        for chunk in raw_next.replace(';', ',').replace('|', ',').split(','):
+            part = chunk.strip()
+            if part:
+                parts.append(part)
+        if not parts:
+            continue
+        
+        sx, sy = src['center']
+        for part_token in parts:
+            targets = _resolve_targets(part_token, positioned, name_index)
+            for tgt in targets:
+                if tgt is src:
+                    continue
+                tx, ty = tgt['center']
+                sx0, sy0, sx1, sy1 = src['box']
+                sw2 = (sx1 - sx0) / 2.0
+                sh2 = (sy1 - sy0) / 2.0
+                tx0, ty0, tx1, ty1 = tgt['box']
+                tw2 = (tx1 - tx0) / 2.0
+                th2 = (ty1 - ty0) / 2.0
+                vec_dx = tx - sx
+                vec_dy = ty - sy
+                if vec_dx == 0 and vec_dy == 0:
+                    continue
+                
+                factors_s = []
+                if vec_dx != 0:
+                    factors_s.append(sw2 / abs(vec_dx))
+                if vec_dy != 0:
+                    factors_s.append(sh2 / abs(vec_dy))
+                t_s = min(factors_s) if factors_s else 0
+                
+                factors_t = []
+                if vec_dx != 0:
+                    factors_t.append(tw2 / abs(vec_dx))
+                if vec_dy != 0:
+                    factors_t.append(th2 / abs(vec_dy))
+                t_t = min(factors_t) if factors_t else 0
+                
+                start_x = sx + vec_dx * t_s * 1.02
+                start_y = sy + vec_dy * t_s * 1.02
+                end_x = tx - vec_dx * t_t * 1.02
+                end_y = ty - vec_dy * t_t * 1.02
+                _draw_arrow(draw, start_x, start_y, end_x, end_y, color=(0, 0, 0, 245), width=5)
+                
+                # Collect product streams for labeling
+                if src.get('type') == 'subprocess':
+                    src_proc = processes[src['idx']]
+                    src_streams = src_proc.get('streams', []) or []
+                    product_streams = [s for s in src_streams if s.get('type', 'product') == 'product']
+                    if product_streams:
+                        connection_product_streams.append({
+                            'start_x': start_x, 'start_y': start_y,
+                            'end_x': end_x, 'end_y': end_y,
+                            'streams': product_streams
+                        })
+    
+    # Draw product stream labels on connection arrows
+    def _draw_connection_stream_label(draw_ctx, start_x, start_y, end_x, end_y, streams, font_obj):
+        try:
+            small_font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 10)
+        except:
+            try:
+                small_font = ImageFont.truetype("arial.ttf", 10)
+            except:
+                small_font = font_obj
+        
+        all_parts = []
+        for s in streams:
+            display_vars = s.get('display_vars', [])
+            sv = s.get('stream_values', {}) or s.get('product_values', {})
+            
+            tin_val = sv.get('Tin', '') or s.get('temp_in', '')
+            tout_val = sv.get('Tout', '') or s.get('temp_out', '')
+            mdot_val = sv.get('ṁ', '') or s.get('mdot', '')
+            cp_val = sv.get('cp', '') or s.get('cp', '')
+            CP_val = sv.get('CP', '')
+            
+            stream_parts = []
+            stream_name = s.get('name', '')
+            if tin_val:
+                stream_parts.append(f"Tin={tin_val}")
+            if tout_val and "Tout" in display_vars:
+                stream_parts.append(f"Tout={tout_val}")
+            if mdot_val and "ṁ" in display_vars:
+                stream_parts.append(f"ṁ={mdot_val}")
+            if cp_val and "cp" in display_vars:
+                stream_parts.append(f"cp={cp_val}")
+            if CP_val and "CP" in display_vars:
+                stream_parts.append(f"CP={CP_val}")
+            
+            if stream_parts:
+                label = " | ".join(stream_parts)
+                if stream_name:
+                    label = f"{stream_name}: {label}"
+                all_parts.append(label)
+        
+        if not all_parts:
+            return
+        
+        mid_x = (start_x + end_x) / 2
+        mid_y = (start_y + end_y) / 2
+        perp_offset = 18
+        line_height = 14
+        
+        for line_idx, stream_label in enumerate(all_parts):
+            if small_font:
+                tb = draw_ctx.textbbox((0, 0), stream_label, font=small_font)
+                t_width = tb[2] - tb[0]
+                t_height = tb[3] - tb[1]
+            else:
+                t_width = len(stream_label) * 5
+                t_height = 8
+            
+            lx = int(mid_x - t_width / 2)
+            ly = int(mid_y + perp_offset + (line_idx * line_height))
+            
+            draw_ctx.rectangle([lx - 3, ly - 1, lx + t_width + 3, ly + t_height + 1], 
+                               fill=(255, 255, 255, 235), outline=(120, 120, 120, 150))
+            if small_font:
+                draw_ctx.text((lx, ly), stream_label, fill=(0, 70, 0, 255), font=small_font)
+            else:
+                draw_ctx.text((lx, ly), stream_label, fill=(0, 70, 0, 255))
+    
+    # Draw subprocess boxes
+    for item in positioned:
+        x0, y0, x1, y1 = item['box']
+        label = item['label']
+        
+        fill_color = (224, 242, 255, 245)  # Light blue
+        border_color = (23, 105, 170, 255)  # Dark blue
+        text_color = (10, 53, 85, 255)
+        
+        draw.rectangle([x0, y0, x1, y1], fill=fill_color, outline=border_color, width=2)
+        
+        box_w = x1 - x0
+        box_h = y1 - y0
+        if font:
+            bbox_lbl = draw.textbbox((0, 0), label, font=font)
+            t_w = bbox_lbl[2] - bbox_lbl[0]
+            t_h = bbox_lbl[3] - bbox_lbl[1]
+        else:
+            t_w = len(label) * 6
+            t_h = 10
+        ct_x = int(x0 + (box_w - t_w) / 2)
+        ct_y = int(y0 + (box_h - t_h) / 2)
+        if font:
+            draw.text((ct_x, ct_y), label, fill=text_color, font=font)
+        else:
+            draw.text((ct_x, ct_y), label, fill=text_color)
+    
+    # Draw product stream labels on connections
+    for conn in connection_product_streams:
+        _draw_connection_stream_label(draw, conn['start_x'], conn['start_y'], 
+                                     conn['end_x'], conn['end_y'], conn['streams'], font)
+    
+    # Draw vertical stream arrows (Tin/Tout)
+    arrow_len_v = 45
+    base_stream_spacing = 60
+    
+    def _draw_v_arrow(draw_ctx, x_pos, y_from, y_to, head_at_end=True, color=(0, 0, 0, 245), width=3):
+        draw_ctx.line([(x_pos, y_from), (x_pos, y_to)], fill=color, width=width)
+        head_len = 11
+        head_half = 7
+        if head_at_end:
+            direction = 1 if y_to >= y_from else -1
+            tip_y = y_to
+            base_y = y_to - direction * head_len
+        else:
+            direction = 1 if y_from >= y_to else -1
+            tip_y = y_from
+            base_y = y_from - direction * head_len
+        draw_ctx.polygon([
+            (x_pos, tip_y),
+            (x_pos - head_half, base_y),
+            (x_pos + head_half, base_y)
+        ], fill=color)
+    
+    def _label_centered(text_str, x_center, y_baseline, above=True):
+        if not text_str:
+            return
+        if font:
+            tb = draw.textbbox((0, 0), text_str, font=font)
+            t_width = tb[2] - tb[0]
+            t_height = tb[3] - tb[1]
+        else:
+            t_width = len(text_str) * 6
+            t_height = 10
+        text_xc = int(x_center - t_width / 2)
+        text_yc = int(y_baseline - (t_height if above else 0))
+        draw.rectangle([text_xc - 2, text_yc - 2, text_xc + t_width + 2, text_yc + t_height + 2], fill=(255, 255, 255, 230))
+        if font:
+            draw.text((text_xc, text_yc), text_str, fill=(0, 0, 0, 255), font=font)
+        else:
+            draw.text((text_xc, text_yc), text_str, fill=(0, 0, 0, 255))
+    
+    # Draw stream arrows for each subprocess
+    for item in positioned:
+        if item.get('type') != 'subprocess':
+            continue
+        
+        proc_idx = item['idx']
+        proc = processes[proc_idx]
+        streams = proc.get('streams', []) or []
+        if not streams:
+            continue
+        
+        non_product_streams = [s for s in streams if s.get('type', 'product') != 'product']
+        if not non_product_streams:
+            continue
+        
+        x0, y0, x1, y1 = item['box']
+        box_center_x = (x0 + x1) / 2
+        n_streams = len(non_product_streams)
+        stream_h_spacing = max(28, min(base_stream_spacing, (x1 - x0 - 20) / max(1, n_streams))) if n_streams > 1 else 0
+        
+        for s_i, s in enumerate(non_product_streams):
+            offset = (s_i - (n_streams - 1) / 2) * stream_h_spacing
+            sx = int(box_center_x + offset)
+            
+            tin_raw = s.get('temp_in', '')
+            tout_raw = s.get('temp_out', '')
+            try:
+                tin_val = float(str(tin_raw).strip())
+            except (ValueError, TypeError):
+                tin_val = None
+            try:
+                tout_val = float(str(tout_raw).strip())
+            except (ValueError, TypeError):
+                tout_val = None
+            
+            if tin_val is not None and tout_val is not None:
+                is_cooling = tin_val > tout_val
+                col = (200, 25, 25, 255) if is_cooling else (25, 80, 200, 255)
+            else:
+                col = (90, 90, 90, 255)
+            
+            inbound_bottom = y0 - 2
+            inbound_top = inbound_bottom - arrow_len_v
+            _draw_v_arrow(draw, sx, inbound_top, inbound_bottom, head_at_end=True, color=col, width=4)
+            
+            outbound_top = y1 + 2
+            outbound_bottom = outbound_top + arrow_len_v
+            _draw_v_arrow(draw, sx, outbound_top, outbound_bottom, head_at_end=True, color=col, width=4)
+            
+            mdot_raw = s.get('mdot', '')
+            cp_raw = s.get('cp', '')
+            m_symbol = "ṁ"
+            mdot_part = f"{m_symbol}={mdot_raw}" if mdot_raw not in (None, '') else ''
+            cp_part = f"cp={cp_raw}" if cp_raw not in (None, '') else ''
+            
+            tin_label = f"Tin={tin_raw}" if tin_raw not in ('', None) else 'Tin=?'
+            tout_label = f"Tout={tout_raw}" if tout_raw not in ('', None) else 'Tout=?'
+            
+            top_components = [tin_label]
+            if mdot_part:
+                top_components.append(mdot_part)
+            if cp_part:
+                top_components.append(cp_part)
+            bot_components = [tout_label]
+            if mdot_part:
+                bot_components.append(mdot_part)
+            if cp_part:
+                bot_components.append(cp_part)
+            
+            top_text = "  |  ".join(top_components)
+            bot_text = "  |  ".join(bot_components)
+            _label_centered(top_text, sx, inbound_top - 6, above=True)
+            _label_centered(bot_text, sx, outbound_bottom + 6, above=False)
+    
+    return base_img
 
 def generate_report():
     """Generate an HTML report with process maps and notes."""
@@ -309,7 +743,7 @@ def generate_report():
                 <p>Process Overview</p>
             </div>
             <div class="map-section">
-                {"<img src='data:image/png;base64," + subprocess_map_b64 + "' alt='Subprocess Connections'>" if subprocess_map_b64 else "<p><em>Subprocess map not captured. To include this map, go to Data Collection, expand a process using the 'Map' toggle to view subprocesses, then return here and generate the report again.</em></p>"}
+                {"<img src='data:image/png;base64," + subprocess_map_b64 + "' alt='Subprocess Connections'>" if subprocess_map_b64 else "<p>No subprocesses with coordinates found.</p>"}
                 <p>Subprocess Connections</p>
             </div>
         </div>
