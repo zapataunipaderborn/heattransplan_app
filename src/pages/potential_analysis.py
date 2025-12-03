@@ -5,6 +5,9 @@ import plotly.graph_objects as go
 import matplotlib.pyplot as plt
 import tempfile
 import csv
+from io import BytesIO
+from PIL import Image, ImageDraw, ImageFont
+from datetime import datetime
 
 # Add the pinch_tool directory to the path for imports
 pinch_tool_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'pinch_tool'))
@@ -59,7 +62,385 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.title("Potential Analysis")
+# Helper function to convert lon/lat to pixel coordinates (same as data_collection.py)
+def snapshot_lonlat_to_pixel(lon, lat, center_ll, z_level, img_w, img_h):
+    import math as _math
+    def lonlat_to_xy(lon_val, lat_val, z_val):
+        lat_rad = _math.radians(lat_val)
+        n_val = 2.0 ** z_val
+        xtile = (lon_val + 180.0) / 360.0 * n_val
+        ytile = (1.0 - _math.log(_math.tan(lat_rad) + 1 / _math.cos(lat_rad)) / _math.pi) / 2.0 * n_val
+        return xtile, ytile
+    
+    center_lon, center_lat = center_ll
+    cx, cy = lonlat_to_xy(center_lon, center_lat, z_level)
+    px_tile, py_tile = lonlat_to_xy(lon, lat, z_level)
+    tile_size = 256
+    dx_tiles = px_tile - cx
+    dy_tiles = py_tile - cy
+    dx_px = dx_tiles * tile_size
+    dy_px = dy_tiles * tile_size
+    screen_x = img_w / 2 + dx_px
+    screen_y = img_h / 2 + dy_px
+    return screen_x, screen_y
+
+def generate_process_level_map():
+    """Generate a map image showing only the process-level (green boxes)."""
+    snapshots_dict = st.session_state.get('map_snapshots', {})
+    active_base = st.session_state.get('current_base', 'OpenStreetMap')
+    
+    if active_base == 'Blank':
+        base_img = Image.new('RGBA', (800, 600), (242, 242, 243, 255))
+    else:
+        chosen_bytes = snapshots_dict.get(active_base) or st.session_state.get('map_snapshot')
+        if not chosen_bytes:
+            return None
+        base_img = Image.open(BytesIO(chosen_bytes)).convert("RGBA")
+    
+    w, h = base_img.size
+    draw = ImageDraw.Draw(base_img)
+    
+    # Load font
+    BOX_FONT_SIZE = 20
+    try:
+        font = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", BOX_FONT_SIZE)
+    except (OSError, IOError):
+        try:
+            font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", BOX_FONT_SIZE)
+        except (OSError, IOError):
+            try:
+                font = ImageFont.truetype("DejaVuSans.ttf", BOX_FONT_SIZE)
+            except (OSError, IOError):
+                font = ImageFont.load_default()
+    
+    # Draw process-level boxes (green)
+    group_coords = st.session_state.get('proc_group_coordinates', {})
+    proc_group_names = st.session_state.get('proc_group_names', [])
+    map_center = st.session_state.get('map_center', [0, 0])
+    map_zoom = st.session_state.get('map_zoom', 17.5)
+    
+    for group_idx, coords_data in group_coords.items():
+        group_idx = int(group_idx) if isinstance(group_idx, str) else group_idx
+        if group_idx < len(proc_group_names):
+            lat = coords_data.get('lat')
+            lon = coords_data.get('lon')
+            if lat is not None and lon is not None:
+                try:
+                    lat_f = float(lat)
+                    lon_f = float(lon)
+                    group_px, group_py = snapshot_lonlat_to_pixel(
+                        lon_f, lat_f,
+                        (map_center[1], map_center[0]),
+                        map_zoom, w, h
+                    )
+                    if group_px < -50 or group_py < -20 or group_px > w + 50 or group_py > h + 20:
+                        continue
+                    
+                    group_label = proc_group_names[group_idx]
+                    scale = float(coords_data.get('box_scale', 1.5) or 1.5)
+                    padding = int(8 * scale)
+                    text_bbox = draw.textbbox((0, 0), group_label, font=font)
+                    tw = text_bbox[2] - text_bbox[0]
+                    th = text_bbox[3] - text_bbox[1]
+                    box_w = int(tw * scale + padding * 2)
+                    box_h = int(th * scale + padding * 2)
+                    x0 = int(group_px - box_w / 2)
+                    y0 = int(group_py - box_h / 2)
+                    x1 = x0 + box_w
+                    y1 = y0 + box_h
+                    
+                    # Draw box
+                    fill_color = (200, 255, 200, 245)
+                    border_color = (34, 139, 34, 255)
+                    text_color = (0, 100, 0, 255)
+                    draw.rectangle([x0, y0, x1, y1], fill=fill_color, outline=border_color, width=3)
+                    
+                    # Draw label
+                    text_x = x0 + (box_w - tw) // 2
+                    text_y = y0 + (box_h - th) // 2
+                    draw.text((text_x, text_y), group_label, fill=text_color, font=font)
+                except (ValueError, TypeError):
+                    continue
+    
+    return base_img
+
+def generate_subprocess_level_map():
+    """Generate a map image showing subprocesses with connections."""
+    snapshots_dict = st.session_state.get('map_snapshots', {})
+    active_base = st.session_state.get('current_base', 'OpenStreetMap')
+    
+    if active_base == 'Blank':
+        base_img = Image.new('RGBA', (800, 600), (242, 242, 243, 255))
+    else:
+        chosen_bytes = snapshots_dict.get(active_base) or st.session_state.get('map_snapshot')
+        if not chosen_bytes:
+            return None
+        base_img = Image.open(BytesIO(chosen_bytes)).convert("RGBA")
+    
+    w, h = base_img.size
+    draw = ImageDraw.Draw(base_img)
+    
+    # Load font
+    BOX_FONT_SIZE = 16
+    try:
+        font = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", BOX_FONT_SIZE)
+    except (OSError, IOError):
+        try:
+            font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", BOX_FONT_SIZE)
+        except (OSError, IOError):
+            try:
+                font = ImageFont.truetype("DejaVuSans.ttf", BOX_FONT_SIZE)
+            except (OSError, IOError):
+                font = ImageFont.load_default()
+    
+    processes = st.session_state.get('processes', [])
+    map_center = st.session_state.get('map_center', [0, 0])
+    map_zoom = st.session_state.get('map_zoom', 17.5)
+    
+    # Collect positioned subprocesses
+    positioned = []
+    for idx, proc in enumerate(processes):
+        coords = proc.get('coordinates', {})
+        lat = coords.get('lat')
+        lon = coords.get('lon')
+        if lat is not None and lon is not None:
+            try:
+                lat_f = float(lat)
+                lon_f = float(lon)
+                px, py = snapshot_lonlat_to_pixel(
+                    lon_f, lat_f,
+                    (map_center[1], map_center[0]),
+                    map_zoom, w, h
+                )
+                if px < -50 or py < -20 or px > w + 50 or py > h + 20:
+                    continue
+                
+                label = proc.get('name', f'Subprocess {idx + 1}')
+                scale = float(proc.get('box_scale', 1.0) or 1.0)
+                padding = int(6 * scale)
+                text_bbox = draw.textbbox((0, 0), label, font=font)
+                tw = text_bbox[2] - text_bbox[0]
+                th = text_bbox[3] - text_bbox[1]
+                box_w = int(tw * scale + padding * 2)
+                box_h = int(th * scale + padding * 2)
+                x0 = int(px - box_w / 2)
+                y0 = int(py - box_h / 2)
+                x1 = x0 + box_w
+                y1 = y0 + box_h
+                
+                positioned.append({
+                    'idx': idx,
+                    'label': label,
+                    'center': (px, py),
+                    'box': (x0, y0, x1, y1),
+                    'next': proc.get('connection', '')
+                })
+            except (ValueError, TypeError):
+                continue
+    
+    # Draw connections first
+    name_to_center = {p['label'].lower(): p['center'] for p in positioned}
+    for p in positioned:
+        if p['next']:
+            next_name = p['next'].lower()
+            if next_name in name_to_center:
+                start = p['center']
+                end = name_to_center[next_name]
+                draw.line([start, end], fill=(100, 100, 100, 200), width=2)
+                # Draw arrowhead
+                import math
+                angle = math.atan2(end[1] - start[1], end[0] - start[0])
+                arrow_len = 10
+                arrow_angle = math.pi / 6
+                ax1 = end[0] - arrow_len * math.cos(angle - arrow_angle)
+                ay1 = end[1] - arrow_len * math.sin(angle - arrow_angle)
+                ax2 = end[0] - arrow_len * math.cos(angle + arrow_angle)
+                ay2 = end[1] - arrow_len * math.sin(angle + arrow_angle)
+                draw.polygon([(end[0], end[1]), (ax1, ay1), (ax2, ay2)], fill=(100, 100, 100, 200))
+    
+    # Draw subprocess boxes
+    for p in positioned:
+        x0, y0, x1, y1 = p['box']
+        fill_color = (255, 255, 220, 245)
+        border_color = (180, 140, 60, 255)
+        text_color = (80, 60, 20, 255)
+        draw.rectangle([x0, y0, x1, y1], fill=fill_color, outline=border_color, width=2)
+        
+        # Draw label
+        text_bbox = draw.textbbox((0, 0), p['label'], font=font)
+        tw = text_bbox[2] - text_bbox[0]
+        th = text_bbox[3] - text_bbox[1]
+        box_w = x1 - x0
+        box_h = y1 - y0
+        text_x = x0 + (box_w - tw) // 2
+        text_y = y0 + (box_h - th) // 2
+        draw.text((text_x, text_y), p['label'], fill=text_color, font=font)
+    
+    return base_img
+
+def generate_report():
+    """Generate an HTML report with process maps and notes."""
+    import base64
+    
+    # Generate maps as base64 images
+    process_map = generate_process_level_map()
+    subprocess_map = generate_subprocess_level_map()
+    
+    process_map_b64 = ""
+    subprocess_map_b64 = ""
+    
+    if process_map:
+        img_buffer = BytesIO()
+        process_map.save(img_buffer, format='PNG')
+        img_buffer.seek(0)
+        process_map_b64 = base64.b64encode(img_buffer.getvalue()).decode('utf-8')
+    
+    if subprocess_map:
+        img_buffer2 = BytesIO()
+        subprocess_map.save(img_buffer2, format='PNG')
+        img_buffer2.seek(0)
+        subprocess_map_b64 = base64.b64encode(img_buffer2.getvalue()).decode('utf-8')
+    
+    # Get notes
+    project_notes = st.session_state.get('project_notes', '')
+    notes_html = ""
+    if project_notes:
+        for para in project_notes.split('\n'):
+            if para.strip():
+                notes_html += f"<p>{para}</p>\n"
+    else:
+        notes_html = "<p><em>No notes recorded.</em></p>"
+    
+    # Generate HTML
+    html_content = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Heat Transfer Planning Report</title>
+    <style>
+        body {{
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }}
+        .report-container {{
+            background-color: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }}
+        h1 {{
+            color: #2c3e50;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+        }}
+        h2 {{
+            color: #34495e;
+            margin-top: 30px;
+        }}
+        h3 {{
+            color: #7f8c8d;
+        }}
+        .timestamp {{
+            color: #95a5a6;
+            font-size: 14px;
+            margin-bottom: 30px;
+        }}
+        .maps-container {{
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin: 20px 0;
+        }}
+        .map-section {{
+            text-align: center;
+            flex: 1;
+            min-width: 300px;
+            max-width: 480px;
+        }}
+        .map-section img {{
+            max-width: 100%;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }}
+        .map-section p {{
+            font-weight: bold;
+            color: #555;
+            margin-top: 10px;
+        }}
+        .notes-section {{
+            background-color: #fafafa;
+            padding: 20px;
+            border-radius: 4px;
+            border-left: 4px solid #3498db;
+            margin-top: 20px;
+        }}
+        .notes-section p {{
+            margin: 8px 0;
+            line-height: 1.6;
+        }}
+        @media print {{
+            body {{
+                background-color: white;
+            }}
+            .report-container {{
+                box-shadow: none;
+                padding: 20px;
+            }}
+        }}
+    </style>
+</head>
+<body>
+    <div class="report-container">
+        <h1>🔥 Heat Transfer Planning Report</h1>
+        <p class="timestamp">Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}</p>
+        
+        <h2>📍 Data Collection</h2>
+        
+        <div class="maps-container">
+            <div class="map-section">
+                {"<img src='data:image/png;base64," + process_map_b64 + "' alt='Process Overview'>" if process_map_b64 else "<p>Process map not available</p>"}
+                <p>Process Overview</p>
+            </div>
+            <div class="map-section">
+                {"<img src='data:image/png;base64," + subprocess_map_b64 + "' alt='Subprocess Connections'>" if subprocess_map_b64 else "<p>Subprocess map not available</p>"}
+                <p>Subprocess Connections</p>
+            </div>
+        </div>
+        
+        <h3>📝 Notes</h3>
+        <div class="notes-section">
+            {notes_html}
+        </div>
+    </div>
+</body>
+</html>"""
+    
+    return html_content
+
+# Title and Generate Report button
+title_col, button_col = st.columns([4, 1])
+with title_col:
+    st.title("Potential Analysis")
+with button_col:
+    st.write("")  # Spacer to align button
+    if st.button("📄 Generate Report", key="generate_report_btn"):
+        try:
+            html_data = generate_report()
+            st.download_button(
+                label="⬇️ Download Report",
+                data=html_data,
+                file_name=f"heat_transfer_report_{datetime.now().strftime('%Y%m%d_%H%M')}.html",
+                mime="text/html",
+                key="download_report_btn"
+            )
+        except Exception as e:
+            st.error(f"Error generating report: {str(e)}")
 
 # Initialize session state for selections if not exists
 if 'selected_items' not in st.session_state:
