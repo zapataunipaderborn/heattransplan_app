@@ -652,7 +652,7 @@ def generate_report():
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Heat Transfer Planning Report</title>
+    <title>Heat Integration Report</title>
     <style>
         body {{
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -734,7 +734,7 @@ def generate_report():
 </head>
 <body>
     <div class="report-container">
-        <h1>🔥 Heat Transfer Planning Report</h1>
+        <h1>Heat Integration Report</h1>
         <p class="timestamp">Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}</p>
         
         <h2>📍 Data Collection</h2>
