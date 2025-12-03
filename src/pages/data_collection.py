@@ -2476,51 +2476,60 @@ div.leaflet-container {background: #f2f2f3 !important;}
                         if not cp_val:
                             cp_val = s.get('cp', '')
                         
-                        # Build parts based on display_vars (Tin is always shown)
+                        # Build parts for THIS stream based on display_vars (Tin is always shown)
+                        stream_parts = []
+                        stream_name = s.get('name', '')
                         if tin_val:
-                            all_parts.append(f"Tin={tin_val}")
+                            stream_parts.append(f"Tin={tin_val}")
                         if tout_val and "Tout" in display_vars:
-                            all_parts.append(f"Tout={tout_val}")
+                            stream_parts.append(f"Tout={tout_val}")
                         if mdot_val and "ṁ" in display_vars:
-                            all_parts.append(f"ṁ={mdot_val}")
+                            stream_parts.append(f"ṁ={mdot_val}")
                         if cp_val and "cp" in display_vars:
-                            all_parts.append(f"cp={cp_val}")
+                            stream_parts.append(f"cp={cp_val}")
                         if CP_val and "CP" in display_vars:
-                            all_parts.append(f"CP={CP_val}")
+                            stream_parts.append(f"CP={CP_val}")
+                        
+                        if stream_parts:
+                            # Add stream name prefix if available
+                            label = " | ".join(stream_parts)
+                            if stream_name:
+                                label = f"{stream_name}: {label}"
+                            all_parts.append(label)
                     
                     if not all_parts:
                         return
-                    
-                    # Combine all values into one compact label
-                    full_label = " | ".join(all_parts)
                     
                     # Calculate midpoint of the connection line
                     mid_x = (start_x + end_x) / 2
                     mid_y = (start_y + end_y) / 2
                     
                     perp_offset = 18  # pixels below the line
+                    line_height = 14  # height per stream label line
                     
-                    # Calculate text dimensions with smaller font
-                    if small_font:
-                        tb = draw_ctx.textbbox((0, 0), full_label, font=small_font)
-                        t_width = tb[2] - tb[0]
-                        t_height = tb[3] - tb[1]
-                    else:
-                        t_width = len(full_label) * 5
-                        t_height = 8
-                    
-                    # Position label below the midpoint
-                    lx = int(mid_x - t_width / 2)
-                    ly = int(mid_y + perp_offset)
-                    
-                    # Draw white background
-                    draw_ctx.rectangle([lx - 3, ly - 1, lx + t_width + 3, ly + t_height + 1], 
-                                       fill=(255, 255, 255, 235), outline=(120, 120, 120, 150))
-                    # Draw text with smaller font
-                    if small_font:
-                        draw_ctx.text((lx, ly), full_label, fill=(0, 70, 0, 255), font=small_font)
-                    else:
-                        draw_ctx.text((lx, ly), full_label, fill=(0, 70, 0, 255))
+                    # Draw each stream label on a separate line
+                    for line_idx, stream_label in enumerate(all_parts):
+                        # Calculate text dimensions with smaller font
+                        if small_font:
+                            tb = draw_ctx.textbbox((0, 0), stream_label, font=small_font)
+                            t_width = tb[2] - tb[0]
+                            t_height = tb[3] - tb[1]
+                        else:
+                            t_width = len(stream_label) * 5
+                            t_height = 8
+                        
+                        # Position label below the midpoint, stacked vertically
+                        lx = int(mid_x - t_width / 2)
+                        ly = int(mid_y + perp_offset + (line_idx * line_height))
+                        
+                        # Draw white background
+                        draw_ctx.rectangle([lx - 3, ly - 1, lx + t_width + 3, ly + t_height + 1], 
+                                           fill=(255, 255, 255, 235), outline=(120, 120, 120, 150))
+                        # Draw text with smaller font
+                        if small_font:
+                            draw_ctx.text((lx, ly), stream_label, fill=(0, 70, 0, 255), font=small_font)
+                        else:
+                            draw_ctx.text((lx, ly), stream_label, fill=(0, 70, 0, 255))
                 
                 # Third pass: draw boxes & labels on top
                 for item in positioned:
