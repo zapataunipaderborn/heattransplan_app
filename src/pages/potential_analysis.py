@@ -951,7 +951,7 @@ def generate_report():
     <style>
         body {{
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            max-width: 1800px;
+            max-width: 2600px;
             margin: 0 auto;
             padding: 20px;
             background-color: #f5f5f5;
@@ -986,14 +986,14 @@ def generate_report():
             display: flex;
             gap: 30px;
             justify-content: center;
-            flex-wrap: wrap;
+            flex-wrap: nowrap;
             margin: 30px 0;
         }}
         .map-section {{
             text-align: center;
             flex: 1;
-            min-width: 500px;
-            max-width: 850px;
+            min-width: 600px;
+            max-width: 1100px;
         }}
         .map-section img {{
             max-width: 100%;
@@ -1097,13 +1097,15 @@ def generate_report():
         }}
         .plots-container {{
             display: flex;
-            gap: 30px;
+            gap: 20px;
             justify-content: center;
-            flex-wrap: wrap;
+            flex-wrap: nowrap;
             margin: 30px 0;
         }}
         .plot-section {{
             text-align: center;
+            flex: 1;
+            min-width: 0;
         }}
         .plot-section img {{
             max-width: 100%;
@@ -1134,12 +1136,12 @@ def generate_report():
         
         <div class="maps-container">
             <div class="map-section">
-                {"<img src='data:image/png;base64," + process_map_b64 + "' alt='Process Overview'>" if process_map_b64 else "<p>Process map not available</p>"}
-                <p>Process Overview</p>
+                {"<img src='data:image/png;base64," + process_map_b64 + "' alt='Process'>" if process_map_b64 else "<p>Process map not available</p>"}
+                <p>Process</p>
             </div>
             <div class="map-section">
-                {"<img src='data:image/png;base64," + subprocess_map_b64 + "' alt='Subprocess Connections'>" if subprocess_map_b64 else "<p>No subprocesses with coordinates found.</p>"}
-                <p>Subprocess Connections</p>
+                {"<img src='data:image/png;base64," + subprocess_map_b64 + "' alt='Subprocess'>" if subprocess_map_b64 else "<p>No subprocesses with coordinates found.</p>"}
+                <p>Subprocess</p>
             </div>
         </div>
         
@@ -1167,7 +1169,7 @@ with button_col:
             st.download_button(
                 label="⬇️ Download Report",
                 data=html_data,
-                file_name=f"heat_transfer_report_{datetime.now().strftime('%Y%m%d_%H%M')}.html",
+                file_name=f"heat_integration_report_{datetime.now().strftime('%Y%m%d_%H%M')}.html",
                 mime="text/html",
                 key="download_report_btn"
             )
