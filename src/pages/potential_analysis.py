@@ -818,10 +818,15 @@ def generate_report():
                     pinch_obj.constructCompositeDiagram('EN')
                     pinch_obj.constructGrandCompositeCurve('EN')
                     
+                    # Calculate Heat Recovery
+                    total_hot_duty = sum(abs(s['Q']) for s in streams_data if s['Tin'] > s['Tout'])
+                    heat_recovery = total_hot_duty - pinch_obj.hotUtility
+                    
                     results = {
                         'hot_utility': pinch_obj.hotUtility,
                         'cold_utility': pinch_obj.coldUtility,
                         'pinch_temperature': pinch_obj.pinchTemperature,
+                        'heat_recovery': heat_recovery,
                         'tmin': pinch_obj.tmin,
                         'composite_diagram': pinch_obj.compositeDiagram,
                         'grand_composite_curve': pinch_obj.grandCompositeCurve,
@@ -899,6 +904,10 @@ def generate_report():
                         <div class="metric-card pinch">
                             <div class="metric-label">Pinch Temperature</div>
                             <div class="metric-value">{results['pinch_temperature']:.1f} °C</div>
+                        </div>
+                        <div class="metric-card recovery">
+                            <div class="metric-label">Heat Recovery</div>
+                            <div class="metric-value">{results['heat_recovery']:.2f} kW</div>
                         </div>
                     </div>
                     
@@ -1084,6 +1093,10 @@ def generate_report():
         .metric-card.pinch {{
             background-color: #f3e5f5;
             border: 2px solid #ce93d8;
+        }}
+        .metric-card.recovery {{
+            background-color: #e8f5e9;
+            border: 2px solid #a5d6a7;
         }}
         .metric-label {{
             font-size: 14px;
@@ -1561,8 +1574,8 @@ else:
         else:
             # Auto-run pinch analysis
             try:
-                # Row: Shifted toggle | ΔTmin (small) | spacer | Hot Utility | Cold Utility | Pinch Temp
-                toggle_col, tmin_col, spacer, metric1, metric2, metric3 = st.columns([0.6, 0.5, 0.4, 0.7, 0.7, 0.7])
+                # Row: Shifted toggle | ΔTmin (small) | spacer | Hot Utility | Cold Utility | Pinch Temp | Heat Recovery
+                toggle_col, tmin_col, spacer, metric1, metric2, metric3, metric4 = st.columns([0.6, 0.5, 0.3, 0.6, 0.6, 0.6, 0.7])
                 
                 with toggle_col:
                     show_shifted = st.toggle("Show Shifted Composite Curves", value=False, key="shifted_toggle")
@@ -1579,10 +1592,16 @@ else:
                     )
                 
                 pinch = run_pinch_analysis(streams_data, tmin)
+                
+                # Calculate Heat Recovery: Total heat available from hot streams minus hot utility needed
+                total_hot_duty = sum(abs(s['Q']) for s in streams_data if s['Tin'] > s['Tout'])
+                heat_recovery = total_hot_duty - pinch.hotUtility
+                
                 results = {
                     'hot_utility': pinch.hotUtility,
                     'cold_utility': pinch.coldUtility,
                     'pinch_temperature': pinch.pinchTemperature,
+                    'heat_recovery': heat_recovery,
                     'tmin': pinch.tmin,
                     'composite_diagram': pinch.compositeDiagram,
                     'shifted_composite_diagram': pinch.shiftedCompositeDiagram,
@@ -1597,6 +1616,7 @@ else:
                 metric1.metric("Hot Utility", f"{results['hot_utility']:.2f} kW")
                 metric2.metric("Cold Utility", f"{results['cold_utility']:.2f} kW")
                 metric3.metric("Pinch Temp", f"{results['pinch_temperature']:.1f} °C")
+                metric4.metric("Heat Recovery", f"{results['heat_recovery']:.2f} kW")
                 
                 # Side by side plots: Composite Curves (left) and Grand Composite Curve (right)
                 plot_col1, plot_col2 = st.columns(2)
