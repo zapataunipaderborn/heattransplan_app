@@ -830,89 +830,54 @@ def generate_report():
                         'streams': list(pinch_obj.streams)
                     }
                     
-                    # Generate Composite Curves plot using matplotlib
+                    # Generate Composite Curves plot using Plotly (interactive HTML)
                     diagram = results['composite_diagram']
-                    fig1, ax1 = plt.subplots(figsize=(8, 5), dpi=120)
-                    ax1.plot(diagram['hot']['H'], diagram['hot']['T'], 'r-o', linewidth=2, markersize=6, label='Hot')
-                    ax1.plot(diagram['cold']['H'], diagram['cold']['T'], 'b-o', linewidth=2, markersize=6, label='Cold')
-                    ax1.axhline(y=results['pinch_temperature'], linestyle='--', color='gray', linewidth=1.5, label=f"Pinch: {results['pinch_temperature']:.1f}°C")
-                    ax1.set_xlabel('Enthalpy H (kW)', fontsize=11)
-                    ax1.set_ylabel('Temperature T (°C)', fontsize=11)
-                    ax1.set_title('Composite Curves', fontsize=13, fontweight='bold')
-                    ax1.legend(loc='best')
-                    ax1.grid(True, alpha=0.3)
-                    ax1.set_xlim(left=0)
-                    buf1 = BytesIO()
-                    fig1.savefig(buf1, format='png', bbox_inches='tight', facecolor='white')
-                    buf1.seek(0)
-                    composite_plot_b64 = base64.b64encode(buf1.getvalue()).decode('utf-8')
-                    plt.close(fig1)
+                    fig1 = go.Figure()
+                    fig1.add_trace(go.Scatter(x=diagram['hot']['H'], y=diagram['hot']['T'], mode='lines+markers', name='Hot', line=dict(color='red', width=3), marker=dict(size=8)))
+                    fig1.add_trace(go.Scatter(x=diagram['cold']['H'], y=diagram['cold']['T'], mode='lines+markers', name='Cold', line=dict(color='blue', width=3), marker=dict(size=8)))
+                    fig1.add_hline(y=results['pinch_temperature'], line_dash='dash', line_color='gray', annotation_text=f"Pinch: {results['pinch_temperature']:.1f}°C")
+                    fig1.update_layout(title='Composite Curves', xaxis_title='Enthalpy H (kW)', yaxis_title='Temperature T (°C)', height=600, width=900, xaxis=dict(rangemode='tozero'), yaxis=dict(rangemode='tozero'))
+                    composite_plot_html = fig1.to_html(full_html=False, include_plotlyjs='cdn')
                     
-                    # Generate Grand Composite Curve plot using matplotlib
+                    # Generate Grand Composite Curve plot using Plotly (interactive HTML)
                     gcc_H = results['grand_composite_curve']['H']
                     gcc_T = results['grand_composite_curve']['T']
                     heat_cascade = results['heat_cascade']
-                    fig2, ax2 = plt.subplots(figsize=(8, 5), dpi=120)
+                    fig2 = go.Figure()
                     for i in range(len(gcc_H) - 1):
                         color = 'red' if i < len(heat_cascade) and heat_cascade[i]['deltaH'] > 0 else ('blue' if i < len(heat_cascade) and heat_cascade[i]['deltaH'] < 0 else 'gray')
-                        ax2.plot([gcc_H[i], gcc_H[i+1]], [gcc_T[i], gcc_T[i+1]], color=color, linewidth=2, marker='o', markersize=6)
-                    ax2.axhline(y=results['pinch_temperature'], linestyle='--', color='gray', linewidth=1.5, label=f"Pinch: {results['pinch_temperature']:.1f}°C")
-                    ax2.axvline(x=0, color='black', linewidth=0.5, alpha=0.3)
-                    ax2.set_xlabel('Net ΔH (kW)', fontsize=11)
-                    ax2.set_ylabel('Shifted Temperature (°C)', fontsize=11)
-                    ax2.set_title('Grand Composite Curve', fontsize=13, fontweight='bold')
-                    ax2.legend(loc='best')
-                    ax2.grid(True, alpha=0.3)
-                    ax2.set_ylim(bottom=0)
-                    buf2 = BytesIO()
-                    fig2.savefig(buf2, format='png', bbox_inches='tight', facecolor='white')
-                    buf2.seek(0)
-                    gcc_plot_b64 = base64.b64encode(buf2.getvalue()).decode('utf-8')
-                    plt.close(fig2)
+                        fig2.add_trace(go.Scatter(x=[gcc_H[i], gcc_H[i+1]], y=[gcc_T[i], gcc_T[i+1]], mode='lines+markers', line=dict(color=color, width=3), marker=dict(size=8, color=color), showlegend=False))
+                    fig2.add_hline(y=results['pinch_temperature'], line_dash='dash', line_color='gray', annotation_text=f"Pinch: {results['pinch_temperature']:.1f}°C")
+                    fig2.add_vline(x=0, line_color='black', line_width=1, opacity=0.3)
+                    fig2.update_layout(title='Grand Composite Curve', xaxis_title='Net ΔH (kW)', yaxis_title='Shifted Temperature (°C)', height=600, width=900, yaxis=dict(rangemode='tozero'))
+                    gcc_plot_html = fig2.to_html(full_html=False, include_plotlyjs=False)
                     
-                    # Generate Temperature Interval Diagram using matplotlib
-                    interval_plot_b64 = None
+                    # Generate Temperature Interval Diagram using Plotly (interactive HTML)
+                    interval_plot_html = ""
                     temps = results['temperatures']
                     pinch_streams = results['streams']
                     if pinch_streams and temps:
-                        fig3, ax3 = plt.subplots(figsize=(8, 5), dpi=120)
+                        fig3 = go.Figure()
                         num_streams = len(pinch_streams)
                         x_positions = [(i + 1) * 1.0 for i in range(num_streams)]
                         
                         # Draw horizontal temperature lines
                         for temperature in temps:
-                            ax3.axhline(y=temperature, color='gray', linewidth=0.5, linestyle=':', alpha=0.7)
+                            fig3.add_shape(type="line", x0=0, x1=num_streams + 1, y0=temperature, y1=temperature, line=dict(color="gray", width=1, dash="dot"))
                         
                         # Draw pinch line
-                        ax3.axhline(y=results['pinch_temperature'], color='black', linewidth=2, linestyle='--')
+                        fig3.add_shape(type="line", x0=0, x1=num_streams + 1, y0=results['pinch_temperature'], y1=results['pinch_temperature'], line=dict(color="black", width=2, dash="dash"))
                         
-                        # Draw stream bars
+                        # Draw stream bars with arrows
                         for i, stream in enumerate(pinch_streams):
                             ss, st_temp = stream['ss'], stream['st']
                             color = 'red' if stream['type'] == 'HOT' else 'blue'
-                            ax3.plot([x_positions[i], x_positions[i]], [ss, st_temp], color=color, linewidth=8, solid_capstyle='round')
-                            
-                            # Draw arrow
-                            arrow_y = st_temp + (0.02 * (max(temps) - min(temps))) if stream['type'] == 'HOT' else st_temp - (0.02 * (max(temps) - min(temps)))
-                            ax3.annotate('', xy=(x_positions[i], st_temp), xytext=(x_positions[i], ss),
-                                        arrowprops=dict(arrowstyle='->', color=color, lw=2))
-                            
-                            # Label
-                            ax3.text(x_positions[i], max(ss, st_temp) + (max(temps) - min(temps)) * 0.04, f'S{i+1}', 
-                                    ha='center', va='bottom', fontsize=10, fontweight='bold', color='white',
-                                    bbox=dict(boxstyle='round,pad=0.2', facecolor=color, edgecolor='none'))
+                            fig3.add_trace(go.Scatter(x=[x_positions[i], x_positions[i]], y=[ss, st_temp], mode='lines', line=dict(color=color, width=10), showlegend=False))
+                            fig3.add_annotation(x=x_positions[i], y=st_temp, ax=x_positions[i], ay=ss, xref='x', yref='y', axref='x', ayref='y', showarrow=True, arrowhead=2, arrowsize=1.5, arrowwidth=3, arrowcolor=color)
+                            fig3.add_annotation(x=x_positions[i], y=max(ss, st_temp) + (max(temps) - min(temps)) * 0.03, text=f"S{i+1}", showarrow=False, font=dict(size=12, color='white'), bgcolor=color)
                         
-                        ax3.set_xlabel('Streams', fontsize=11)
-                        ax3.set_ylabel('Shifted Temperature (°C)', fontsize=11)
-                        ax3.set_title('Temperature Interval Diagram', fontsize=13, fontweight='bold')
-                        ax3.set_xlim(0, num_streams + 1)
-                        ax3.set_xticks([])
-                        ax3.grid(True, alpha=0.3, axis='y')
-                        buf3 = BytesIO()
-                        fig3.savefig(buf3, format='png', bbox_inches='tight', facecolor='white')
-                        buf3.seek(0)
-                        interval_plot_b64 = base64.b64encode(buf3.getvalue()).decode('utf-8')
-                        plt.close(fig3)
+                        fig3.update_layout(title='Temperature Interval Diagram', xaxis=dict(title='Streams', showticklabels=False, range=[0, num_streams + 1]), yaxis=dict(title='Shifted Temperature (°C)'), height=600, width=900, showlegend=False)
+                        interval_plot_html = fig3.to_html(full_html=False, include_plotlyjs=False)
                     
                     # Build pinch analysis section HTML
                     pinch_section_html = f"""
@@ -940,13 +905,17 @@ def generate_report():
                     <h3>Diagrams</h3>
                     <div class="plots-container">
                         <div class="plot-section">
-                            <img src="data:image/png;base64,{composite_plot_b64}" alt="Composite Curves">
+                            {composite_plot_html}
                         </div>
                         <div class="plot-section">
-                            <img src="data:image/png;base64,{gcc_plot_b64}" alt="Grand Composite Curve">
+                            {gcc_plot_html}
                         </div>
                     </div>
-                    {"<div class='plots-container'><div class='plot-section'><img src='data:image/png;base64," + interval_plot_b64 + "' alt='Temperature Interval Diagram'></div></div>" if interval_plot_b64 else ""}
+                    <div class="plots-container">
+                        <div class="plot-section">
+                            {interval_plot_html}
+                        </div>
+                    </div>
                     
                     <h3>📝 Pinch Analysis Notes</h3>
                     <div class="notes-section">
