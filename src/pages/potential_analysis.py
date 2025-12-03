@@ -73,14 +73,51 @@ if not processes:
 else:
     # Helper function to determine stream type and extract data
     def get_stream_info(stream):
-        """Extract Tin, Tout, mdot, cp from stream and determine if HOT or COLD"""
+        """Extract Tin, Tout, mdot, cp, CP from stream and determine if HOT or COLD.
+        Calculate Q = CP * (Tout - Tin).
+        CP can be provided directly, or calculated as mdot * cp.
+        """
         properties = stream.get('properties', {})
         values = stream.get('values', {})
+        
+        # Also check stream_values (new structure)
+        stream_values = stream.get('stream_values', {})
+        if not stream_values:
+            stream_values = stream.get('product_values', {})
         
         tin = None
         tout = None
         mdot = None
         cp_val = None
+        CP_direct = None  # CP provided directly
+        
+        # First try stream_values (new structure)
+        if stream_values:
+            if 'Tin' in stream_values and stream_values['Tin']:
+                try:
+                    tin = float(stream_values['Tin'])
+                except (ValueError, TypeError):
+                    pass
+            if 'Tout' in stream_values and stream_values['Tout']:
+                try:
+                    tout = float(stream_values['Tout'])
+                except (ValueError, TypeError):
+                    pass
+            if 'ṁ' in stream_values and stream_values['ṁ']:
+                try:
+                    mdot = float(stream_values['ṁ'])
+                except (ValueError, TypeError):
+                    pass
+            if 'cp' in stream_values and stream_values['cp']:
+                try:
+                    cp_val = float(stream_values['cp'])
+                except (ValueError, TypeError):
+                    pass
+            if 'CP' in stream_values and stream_values['CP']:
+                try:
+                    CP_direct = float(stream_values['CP'])
+                except (ValueError, TypeError):
+                    pass
         
         # Check properties dict structure
         if isinstance(properties, dict) and isinstance(values, dict):
@@ -88,24 +125,29 @@ else:
                 vk = pk.replace('prop', 'val')
                 v = values.get(vk, '')
                 
-                if pname == 'Tin' and v:
+                if pname == 'Tin' and v and tin is None:
                     try:
                         tin = float(v)
                     except (ValueError, TypeError):
                         pass
-                elif pname == 'Tout' and v:
+                elif pname == 'Tout' and v and tout is None:
                     try:
                         tout = float(v)
                     except (ValueError, TypeError):
                         pass
-                elif pname == 'ṁ' and v:
+                elif pname == 'ṁ' and v and mdot is None:
                     try:
                         mdot = float(v)
                     except (ValueError, TypeError):
                         pass
-                elif pname == 'cp' and v:
+                elif pname == 'cp' and v and cp_val is None:
                     try:
                         cp_val = float(v)
+                    except (ValueError, TypeError):
+                        pass
+                elif pname == 'CP' and v and CP_direct is None:
+                    try:
+                        CP_direct = float(v)
                     except (ValueError, TypeError):
                         pass
         
@@ -139,17 +181,25 @@ else:
             else:
                 stream_type = "COLD"
         
-        # Calculate CP if possible
-        cp_flow = None
-        if mdot is not None and cp_val is not None:
-            cp_flow = mdot * cp_val
+        # Determine CP: use direct CP if provided, otherwise calculate from mdot * cp
+        CP_flow = None
+        if CP_direct is not None:
+            CP_flow = CP_direct
+        elif mdot is not None and cp_val is not None:
+            CP_flow = mdot * cp_val
+        
+        # Calculate Q = CP * |Tout - Tin| (always positive)
+        Q = None
+        if CP_flow is not None and tin is not None and tout is not None:
+            Q = abs(CP_flow * (tout - tin))
         
         return {
             'tin': tin,
             'tout': tout,
             'mdot': mdot,
             'cp': cp_val,
-            'CP': cp_flow,
+            'CP': CP_flow,
+            'Q': Q,
             'type': stream_type
         }
     
@@ -189,7 +239,9 @@ else:
                 if info['tout'] is not None:
                     display_parts.append(f"Tout:{info['tout']}°C")
                 if info['CP'] is not None:
-                    display_parts.append(f"CP:{info['CP']:.2f} kW/K")
+                    display_parts.append(f"CP:{info['CP']:.2f}")
+                if info['Q'] is not None:
+                    display_parts.append(f"Q:{info['Q']:.2f} kW")
                 
                 if info['type']:
                     type_color = "🔴" if info['type'] == "HOT" else "🔵"
@@ -217,7 +269,9 @@ else:
         def extract_stream_data(procs, sel_items):
             """
             Extract stream data from selected items.
-            Returns list of dicts with: CP (calculated as mdot * cp), Tin, Tout
+            Returns list of dicts with: CP, Tin, Tout, Q
+            CP can be provided directly, or calculated as mdot * cp.
+            Q = CP * (Tout - Tin)
             """
             result_streams = []
             
@@ -237,74 +291,24 @@ else:
                         if s_idx < len(proc_streams):
                             strm = proc_streams[s_idx]
                             
-                            # Extract values from properties/values structure
-                            props = strm.get('properties', {})
-                            vals = strm.get('values', {})
+                            # Use get_stream_info to extract all values consistently
+                            info = get_stream_info(strm)
                             
-                            tin = None
-                            tout = None
-                            mdot = None
-                            cp_val = None
+                            tin = info['tin']
+                            tout = info['tout']
+                            CP = info['CP']
+                            Q = info['Q']
                             
-                            # Check properties dict structure
-                            if isinstance(props, dict) and isinstance(vals, dict):
-                                for pk, pname in props.items():
-                                    vk = pk.replace('prop', 'val')
-                                    v = vals.get(vk, '')
-                                    
-                                    if pname == 'Tin' and v:
-                                        try:
-                                            tin = float(v)
-                                        except (ValueError, TypeError):
-                                            pass
-                                    elif pname == 'Tout' and v:
-                                        try:
-                                            tout = float(v)
-                                        except (ValueError, TypeError):
-                                            pass
-                                    elif pname == 'ṁ' and v:
-                                        try:
-                                            mdot = float(v)
-                                        except (ValueError, TypeError):
-                                            pass
-                                    elif pname == 'cp' and v:
-                                        try:
-                                            cp_val = float(v)
-                                        except (ValueError, TypeError):
-                                            pass
-                            
-                            # Fallback to legacy fields
-                            if tin is None and strm.get('temp_in'):
-                                try:
-                                    tin = float(strm['temp_in'])
-                                except (ValueError, TypeError):
-                                    pass
-                            if tout is None and strm.get('temp_out'):
-                                try:
-                                    tout = float(strm['temp_out'])
-                                except (ValueError, TypeError):
-                                    pass
-                            if mdot is None and strm.get('mdot'):
-                                try:
-                                    mdot = float(strm['mdot'])
-                                except (ValueError, TypeError):
-                                    pass
-                            if cp_val is None and strm.get('cp'):
-                                try:
-                                    cp_val = float(strm['cp'])
-                                except (ValueError, TypeError):
-                                    pass
-                            
-                            # Calculate CP = mdot * cp
-                            if tin is not None and tout is not None and mdot is not None and cp_val is not None:
-                                CP = mdot * cp_val
+                            # Only add if we have the required data
+                            if tin is not None and tout is not None and CP is not None:
                                 strm_name = strm.get('name', f'Stream {s_idx + 1}')
                                 proc_nm = proc.get('name', f'Subprocess {p_idx + 1}')
                                 result_streams.append({
                                     'name': f"{proc_nm} - {strm_name}",
                                     'CP': CP,
                                     'Tin': tin,
-                                    'Tout': tout
+                                    'Tout': tout,
+                                    'Q': Q
                                 })
             
             return result_streams
@@ -346,7 +350,7 @@ else:
         streams_data = extract_stream_data(processes, st.session_state['selected_items'])
         
         if len(streams_data) < 2:
-            st.info("Select at least 2 streams with complete data (Tin, Tout, ṁ, cp) to run pinch analysis.")
+            st.info("Select at least 2 streams with complete data (Tin, Tout, and either CP or ṁ+cp) to run pinch analysis.")
             
             # Show what data is missing for selected streams
             if selected_count > 0:
@@ -376,6 +380,24 @@ else:
                                 has_tout = False
                                 has_mdot = False
                                 has_cp = False
+                                has_CP = False  # CP = ṁ * cp (heat capacity rate)
+                                
+                                # Check stream_values (new structure)
+                                stream_vals = strm.get('stream_values', {})
+                                if not stream_vals:
+                                    stream_vals = strm.get('product_values', {})
+                                
+                                if stream_vals:
+                                    if stream_vals.get('Tin'):
+                                        has_tin = True
+                                    if stream_vals.get('Tout'):
+                                        has_tout = True
+                                    if stream_vals.get('ṁ'):
+                                        has_mdot = True
+                                    if stream_vals.get('cp'):
+                                        has_cp = True
+                                    if stream_vals.get('CP'):
+                                        has_CP = True
                                 
                                 if isinstance(props, dict) and isinstance(vals, dict):
                                     for pk, pname in props.items():
@@ -389,6 +411,8 @@ else:
                                             has_mdot = True
                                         elif pname == 'cp' and v:
                                             has_cp = True
+                                        elif pname == 'CP' and v:
+                                            has_CP = True
                                 
                                 # Fallback to legacy
                                 if not has_tin and strm.get('temp_in'):
@@ -405,10 +429,15 @@ else:
                                     missing.append("Tin")
                                 if not has_tout:
                                     missing.append("Tout")
-                                if not has_mdot:
-                                    missing.append("ṁ")
-                                if not has_cp:
-                                    missing.append("cp")
+                                # Either CP is provided directly, or both ṁ and cp are needed
+                                if not has_CP and not (has_mdot and has_cp):
+                                    if not has_mdot:
+                                        missing.append("ṁ")
+                                    if not has_cp:
+                                        missing.append("cp")
+                                    if not missing or (not has_mdot and not has_cp):
+                                        # If neither ṁ nor cp, suggest CP as alternative
+                                        missing.append("(or CP)")
                                 
                                 if missing:
                                     st.warning(f"⚠️ {proc_nm} - {strm_name}: Missing {', '.join(missing)}")
