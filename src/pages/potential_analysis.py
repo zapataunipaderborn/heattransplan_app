@@ -616,6 +616,17 @@ def generate_subprocess_level_map():
 def generate_report():
     """Generate an HTML report with process maps and notes."""
     import base64
+    import os
+    
+    # Load the logo SVG file
+    logo_b64 = ""
+    try:
+        logo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data', 'symbol.svg')
+        with open(logo_path, 'r') as f:
+            svg_content = f.read()
+        logo_b64 = base64.b64encode(svg_content.encode('utf-8')).decode('utf-8')
+    except Exception:
+        pass
     
     # Generate maps as base64 images
     process_map = generate_process_level_map()
@@ -721,6 +732,16 @@ def generate_report():
             margin: 8px 0;
             line-height: 1.6;
         }}
+        .header-row {{
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            margin-bottom: 10px;
+        }}
+        .header-logo {{
+            height: 60px;
+            width: auto;
+        }}
         @media print {{
             body {{
                 background-color: white;
@@ -734,7 +755,10 @@ def generate_report():
 </head>
 <body>
     <div class="report-container">
-        <h1>Heat Integration Report</h1>
+        <div class="header-row">
+            <img src="data:image/svg+xml;base64,{logo_b64}" alt="Logo" class="header-logo">
+            <h1 style="margin: 0; border: none; padding: 0;">Heat Integration Report</h1>
+        </div>
         <p class="timestamp">Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}</p>
         
         <h2>📍 Data Collection</h2>
