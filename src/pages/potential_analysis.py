@@ -656,7 +656,7 @@ def generate_report():
     <style>
         body {{
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            max-width: 1000px;
+            max-width: 2400px;
             margin: 0 auto;
             padding: 20px;
             background-color: #f5f5f5;
@@ -686,19 +686,20 @@ def generate_report():
         }}
         .maps-container {{
             display: flex;
-            gap: 20px;
+            gap: 30px;
             justify-content: center;
             flex-wrap: wrap;
-            margin: 20px 0;
+            margin: 30px 0;
         }}
         .map-section {{
             text-align: center;
             flex: 1;
-            min-width: 300px;
-            max-width: 480px;
+            min-width: 1000px;
+            max-width: 1500px;
         }}
         .map-section img {{
             max-width: 100%;
+            width: 100%;
             border: 1px solid #ddd;
             border-radius: 4px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.1);
@@ -707,6 +708,7 @@ def generate_report():
             font-weight: bold;
             color: #555;
             margin-top: 10px;
+            font-size: 16px;
         }}
         .notes-section {{
             background-color: #fafafa;
