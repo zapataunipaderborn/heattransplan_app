@@ -1310,6 +1310,10 @@ with left:
                             st.rerun()
 
                     if st.session_state['proc_expanded'][i]:
+                        # Divider: Relationships Section
+                        st.markdown("<div style='height:2px; background:linear-gradient(to right, #3498db, transparent); margin:12px 0 8px 0;'></div>", unsafe_allow_html=True)
+                        st.markdown("**Relationships**")
+                        
                         # Multi-select for next processes (exclude self)
                         all_procs = st.session_state['processes']
                         if len(all_procs) <= 1:
@@ -1335,7 +1339,7 @@ with left:
                         if 'extra_info' not in p:
                             p['extra_info'] = {}
                         
-                        # Process Model button and dialog for subprocess
+                        # Process Model button and dialog for subprocess (in same area as Relationships)
                         model_btn_col, model_display_col = st.columns([0.3, 0.7])
                         if model_btn_col.button("Select Process Model", key=f"open_model_dialog_sub_{i}"):
                             # Use dialog to show process model selector
@@ -1422,18 +1426,16 @@ with left:
                             
                             show_subprocess_model_dialog()
                         
-                        # Display current selection
+                        # Display current selection (only if model is selected)
                         current_model = st.session_state['proc_model'][i]
                         if current_model.get('level2'):
                             model_display_col.caption(f"Model: {current_model['level1']} → {current_model['level2']}")
                         elif current_model.get('level1'):
                             model_display_col.caption(f"Model: {current_model['level1']}")
-                        else:
-                            model_display_col.caption("No model selected")
-                        
-                        # Custom notes field (full width)
-                        p['extra_info']['notes'] = st.text_area("Notes", value=p.get('extra_info', {}).get('notes', ''), key=f"p_notes_{i}", height=80)
 
+                        # Divider: Streams Section
+                        st.markdown("<div style='height:2px; background:linear-gradient(to right, #e74c3c, transparent); margin:12px 0 8px 0;'></div>", unsafe_allow_html=True)
+                        
                         # Streams section with persistent add button
                         streams = p.get('streams', [])
                         header_c1, header_c2, header_c3 = st.columns([2,4,1])
@@ -1541,10 +1543,24 @@ with left:
                                 s['properties'][f'prop{idx}'] = var
                                 s['values'][f'val{idx}'] = sv.get(var, '')
                                 idx += 1
+                            
+                            # Divider between streams
+                            if si < len(streams) - 1:
+                                st.markdown("<div style='height:1px; background:#ddd; margin:8px 0;'></div>", unsafe_allow_html=True)
+                        
+                        # Divider: Notes Section
+                        st.markdown("<div style='height:2px; background:linear-gradient(to right, #f39c12, transparent); margin:12px 0 8px 0;'></div>", unsafe_allow_html=True)
+                        st.markdown("**Notes**")
+                        
+                        # Custom notes field (full width)
+                        p['extra_info']['notes'] = st.text_area("Notes", value=p.get('extra_info', {}).get('notes', ''), key=f"p_notes_{i}", height=80, label_visibility="collapsed")
                         
                         # =====================================================
                         # SUB-SUBPROCESSES SECTION - Recursive children
                         # =====================================================
+                        # Divider: Sub-subprocesses Section
+                        st.markdown("<div style='height:2px; background:linear-gradient(to right, #27ae60, transparent); margin:12px 0 8px 0;'></div>", unsafe_allow_html=True)
+                        
                         # Initialize children list if not exists
                         if 'children' not in p:
                             p['children'] = []
@@ -1559,37 +1575,36 @@ with left:
                         child_count = len(p.get('children', []))
                         map_expanded = st.session_state['subprocess_map_expanded'].get(i, False)
                         
-                        header_cols = st.columns([0.40, 0.12, 0.08, 0.20, 0.20])
-                        header_cols[0].markdown(f"**Sub-subprocesses:**")
+                        header_cols = st.columns([0.35, 0.12, 0.08, 0.20, 0.25])
+                        header_cols[0].caption("Sub-subprocesses:")
                         
-                        # Map toggle button
-                        map_toggle_label = "🔽 Hide" if map_expanded else "▶️ Map"
+                        # Map toggle button (smaller)
+                        map_toggle_label = "Hide" if map_expanded else "Map"
                         if header_cols[1].button(map_toggle_label, key=f"map_toggle_subsub_{i}", help="Show/hide sub-subprocesses on map"):
                             st.session_state['subprocess_map_expanded'][i] = not map_expanded
                             st.rerun()
                         
                         # Count
-                        header_cols[2].markdown(f"**{child_count}**")
+                        header_cols[2].caption(f"{child_count}")
                         
                         # Status indicator
                         if map_expanded:
-                            header_cols[3].caption("🗺️ On map")
+                            header_cols[3].caption("On map")
                         
-                        # Add button
-                        if header_cols[4].button("➕ Add", key=f"add_subsub_{i}", help="Add sub-subprocess"):
+                        # Add button (smaller)
+                        if header_cols[4].button("+ Add", key=f"add_subsub_{i}", help="Add sub-subprocess"):
                             add_child_to_node(p, f"Sub-subprocess {child_count + 1}")
                             st.rerun()
                         
                         # Render sub-subprocesses (final level - no deeper)
                         if p.get('children'):
                             render_subsubprocesses(st, p, i, process_model_dict=PROCESS_MODEL_DICT)
-                        else:
-                            st.caption("No sub-subprocesses yet.")
                         
                     if local_idx < len(g_list) - 1:
-                        st.markdown("<div style='height:1px; background:#888888; opacity:0.5; margin:4px 0;'></div>", unsafe_allow_html=True)
+                        # Thicker separator between subprocesses
+                        st.markdown("<div style='height:3px; background:linear-gradient(to right, #2c3e50, #95a5a6, transparent); margin:15px 0;'></div>", unsafe_allow_html=True)
                 # Bottom separator after expanded group
-                st.markdown("<div style='height:2px; background:#888888; opacity:0.7; margin:8px 0 4px;'></div>", unsafe_allow_html=True)
+                st.markdown("<div style='height:4px; background:#34495e; margin:12px 0 4px; border-radius:2px;'></div>", unsafe_allow_html=True)
         else:
             st.info("No groups yet. Use 'Add a process' to start.")
     else:
