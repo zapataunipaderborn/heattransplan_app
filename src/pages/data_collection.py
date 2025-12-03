@@ -1199,11 +1199,11 @@ with left:
                 subprocess_count = len(g_list)
                 subprocess_map_exp = st.session_state['process_subprocess_map_expanded'].get(g, False)
                 
-                sub_header_cols = st.columns([0.40, 0.12, 0.08, 0.20, 0.20])
+                sub_header_cols = st.columns([0.30, 0.22, 0.08, 0.20, 0.20])
                 sub_header_cols[0].markdown("**Subprocesses:**")
                 
                 # Map toggle button
-                subprocess_map_toggle_label = "🔽 Hide" if subprocess_map_exp else "▶️ Map"
+                subprocess_map_toggle_label = "🔽 Hide" if subprocess_map_exp else "🗺️ Show on Map"
                 if sub_header_cols[1].button(subprocess_map_toggle_label, key=f"map_toggle_subprocess_{g}", help="Show/hide subprocesses on map"):
                     st.session_state['process_subprocess_map_expanded'][g] = not subprocess_map_exp
                     st.rerun()
@@ -1575,11 +1575,11 @@ with left:
                         child_count = len(p.get('children', []))
                         map_expanded = st.session_state['subprocess_map_expanded'].get(i, False)
                         
-                        header_cols = st.columns([0.35, 0.12, 0.08, 0.20, 0.25])
+                        header_cols = st.columns([0.25, 0.22, 0.08, 0.20, 0.25])
                         header_cols[0].caption("Sub-subprocesses:")
                         
                         # Map toggle button (smaller)
-                        map_toggle_label = "Hide" if map_expanded else "Map"
+                        map_toggle_label = "🔽 Hide" if map_expanded else "🗺️ Show on Map"
                         if header_cols[1].button(map_toggle_label, key=f"map_toggle_subsub_{i}", help="Show/hide sub-subprocesses on map"):
                             st.session_state['subprocess_map_expanded'][i] = not map_expanded
                             st.rerun()
