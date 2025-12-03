@@ -647,6 +647,21 @@ else:
                     
                     st.plotly_chart(fig2, width='stretch', key="gcc_chart")
                 
+                # Notes section
+                st.markdown("##### Notes")
+                if 'pinch_notes' not in st.session_state:
+                    st.session_state['pinch_notes'] = ""
+                
+                notes = st.text_area(
+                    "Notes",
+                    value=st.session_state['pinch_notes'],
+                    height=100,
+                    placeholder="Add notes about the pinch analysis here...",
+                    key="pinch_notes_input",
+                    label_visibility="collapsed"
+                )
+                st.session_state['pinch_notes'] = notes
+                
                 # More information expander
                 with st.expander("More information"):
                     import pandas as pd
