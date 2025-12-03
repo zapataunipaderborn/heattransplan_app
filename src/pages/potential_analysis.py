@@ -614,9 +614,11 @@ def generate_subprocess_level_map():
     return base_img
 
 def generate_report():
-    """Generate an HTML report with process maps and notes."""
+    """Generate an HTML report with process maps, notes, and pinch analysis results."""
     import base64
     import os
+    import tempfile
+    import csv
     
     # Load the logo SVG file
     logo_b64 = ""
@@ -657,6 +659,319 @@ def generate_report():
     else:
         notes_html = "<p><em>No notes recorded.</em></p>"
     
+    # Get pinch notes
+    pinch_notes = st.session_state.get('pinch_notes', '')
+    pinch_notes_html = ""
+    if pinch_notes:
+        for para in pinch_notes.split('\n'):
+            if para.strip():
+                pinch_notes_html += f"<p>{para}</p>\n"
+    else:
+        pinch_notes_html = "<p><em>No pinch analysis notes recorded.</em></p>"
+    
+    # =====================================================
+    # PINCH ANALYSIS DATA FOR REPORT
+    # =====================================================
+    pinch_section_html = ""
+    composite_plot_b64 = ""
+    gcc_plot_b64 = ""
+    interval_plot_b64 = ""
+    
+    if PINCH_AVAILABLE:
+        try:
+            # Helper function to extract stream info (same as main code)
+            def get_stream_info_report(stream):
+                properties = stream.get('properties', {})
+                values = stream.get('values', {})
+                stream_values = stream.get('stream_values', {})
+                if not stream_values:
+                    stream_values = stream.get('product_values', {})
+                
+                tin = None
+                tout = None
+                mdot = None
+                cp_val = None
+                CP_direct = None
+                
+                if stream_values:
+                    if stream_values.get('Tin'):
+                        try: tin = float(stream_values['Tin'])
+                        except: pass
+                    if stream_values.get('Tout'):
+                        try: tout = float(stream_values['Tout'])
+                        except: pass
+                    if stream_values.get('ṁ'):
+                        try: mdot = float(stream_values['ṁ'])
+                        except: pass
+                    if stream_values.get('cp'):
+                        try: cp_val = float(stream_values['cp'])
+                        except: pass
+                    if stream_values.get('CP'):
+                        try: CP_direct = float(stream_values['CP'])
+                        except: pass
+                
+                if isinstance(properties, dict) and isinstance(values, dict):
+                    for pk, pname in properties.items():
+                        vk = pk.replace('prop', 'val')
+                        v = values.get(vk, '')
+                        if pname == 'Tin' and v and tin is None:
+                            try: tin = float(v)
+                            except: pass
+                        elif pname == 'Tout' and v and tout is None:
+                            try: tout = float(v)
+                            except: pass
+                        elif pname == 'ṁ' and v and mdot is None:
+                            try: mdot = float(v)
+                            except: pass
+                        elif pname == 'cp' and v and cp_val is None:
+                            try: cp_val = float(v)
+                            except: pass
+                        elif pname == 'CP' and v and CP_direct is None:
+                            try: CP_direct = float(v)
+                            except: pass
+                
+                if tin is None and stream.get('temp_in'):
+                    try: tin = float(stream['temp_in'])
+                    except: pass
+                if tout is None and stream.get('temp_out'):
+                    try: tout = float(stream['temp_out'])
+                    except: pass
+                if mdot is None and stream.get('mdot'):
+                    try: mdot = float(stream['mdot'])
+                    except: pass
+                if cp_val is None and stream.get('cp'):
+                    try: cp_val = float(stream['cp'])
+                    except: pass
+                
+                stream_type = None
+                if tin is not None and tout is not None:
+                    stream_type = "HOT" if tin > tout else "COLD"
+                
+                CP_flow = CP_direct if CP_direct is not None else (mdot * cp_val if mdot and cp_val else None)
+                Q = abs(CP_flow * (tout - tin)) if CP_flow and tin is not None and tout is not None else None
+                
+                return {'tin': tin, 'tout': tout, 'mdot': mdot, 'cp': cp_val, 'CP': CP_flow, 'Q': Q, 'type': stream_type}
+            
+            # Extract stream data from selections
+            processes = st.session_state.get('processes', [])
+            sel_items = st.session_state.get('selected_items', {})
+            
+            streams_data = []
+            for sel_key, is_sel in sel_items.items():
+                if not is_sel or not sel_key.startswith("stream_"):
+                    continue
+                parts_split = sel_key.split("_")
+                p_idx, s_idx = int(parts_split[1]), int(parts_split[2])
+                if p_idx < len(processes):
+                    proc = processes[p_idx]
+                    proc_streams = proc.get('streams', [])
+                    if s_idx < len(proc_streams):
+                        strm = proc_streams[s_idx]
+                        info = get_stream_info_report(strm)
+                        if info['tin'] is not None and info['tout'] is not None and info['CP'] is not None:
+                            streams_data.append({
+                                'name': f"{proc.get('name', f'Subprocess {p_idx + 1}')} - {strm.get('name', f'Stream {s_idx + 1}')}",
+                                'CP': info['CP'], 'Tin': info['tin'], 'Tout': info['tout'], 'Q': info['Q'], 'type': info['type']
+                            })
+            
+            if len(streams_data) >= 2:
+                # Build streams table HTML
+                streams_table_html = """
+                <table class="streams-table">
+                    <thead>
+                        <tr><th>Stream</th><th>Tin (°C)</th><th>Tout (°C)</th><th>CP (kW/K)</th><th>Q (kW)</th><th>Type</th></tr>
+                    </thead>
+                    <tbody>
+                """
+                for s in streams_data:
+                    type_badge = f'<span class="badge hot">HOT</span>' if s['type'] == 'HOT' else f'<span class="badge cold">COLD</span>'
+                    streams_table_html += f"""
+                        <tr>
+                            <td>{s['name']}</td>
+                            <td>{s['Tin']:.1f}</td>
+                            <td>{s['Tout']:.1f}</td>
+                            <td>{s['CP']:.2f}</td>
+                            <td>{s['Q']:.2f}</td>
+                            <td>{type_badge}</td>
+                        </tr>
+                    """
+                streams_table_html += "</tbody></table>"
+                
+                # Run pinch analysis
+                tmin = st.session_state.get('tmin_input', 10.0)
+                
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, newline='') as f:
+                    writer = csv.writer(f)
+                    writer.writerow(['Tmin', str(tmin)])
+                    writer.writerow(['CP', 'TSUPPLY', 'TTARGET'])
+                    for strm in streams_data:
+                        writer.writerow([strm['CP'], strm['Tin'], strm['Tout']])
+                    temp_csv_path = f.name
+                
+                try:
+                    pinch_obj = Pinch(temp_csv_path, options={})
+                    pinch_obj.shiftTemperatures()
+                    pinch_obj.constructTemperatureInterval()
+                    pinch_obj.constructProblemTable()
+                    pinch_obj.constructHeatCascade()
+                    pinch_obj.constructShiftedCompositeDiagram('EN')
+                    pinch_obj.constructCompositeDiagram('EN')
+                    pinch_obj.constructGrandCompositeCurve('EN')
+                    
+                    results = {
+                        'hot_utility': pinch_obj.hotUtility,
+                        'cold_utility': pinch_obj.coldUtility,
+                        'pinch_temperature': pinch_obj.pinchTemperature,
+                        'tmin': pinch_obj.tmin,
+                        'composite_diagram': pinch_obj.compositeDiagram,
+                        'grand_composite_curve': pinch_obj.grandCompositeCurve,
+                        'heat_cascade': pinch_obj.heatCascade,
+                        'temperatures': pinch_obj._temperatures,
+                        'streams': list(pinch_obj.streams)
+                    }
+                    
+                    # Generate Composite Curves plot using matplotlib
+                    diagram = results['composite_diagram']
+                    fig1, ax1 = plt.subplots(figsize=(8, 5), dpi=120)
+                    ax1.plot(diagram['hot']['H'], diagram['hot']['T'], 'r-o', linewidth=2, markersize=6, label='Hot')
+                    ax1.plot(diagram['cold']['H'], diagram['cold']['T'], 'b-o', linewidth=2, markersize=6, label='Cold')
+                    ax1.axhline(y=results['pinch_temperature'], linestyle='--', color='gray', linewidth=1.5, label=f"Pinch: {results['pinch_temperature']:.1f}°C")
+                    ax1.set_xlabel('Enthalpy H (kW)', fontsize=11)
+                    ax1.set_ylabel('Temperature T (°C)', fontsize=11)
+                    ax1.set_title('Composite Curves', fontsize=13, fontweight='bold')
+                    ax1.legend(loc='best')
+                    ax1.grid(True, alpha=0.3)
+                    ax1.set_xlim(left=0)
+                    buf1 = BytesIO()
+                    fig1.savefig(buf1, format='png', bbox_inches='tight', facecolor='white')
+                    buf1.seek(0)
+                    composite_plot_b64 = base64.b64encode(buf1.getvalue()).decode('utf-8')
+                    plt.close(fig1)
+                    
+                    # Generate Grand Composite Curve plot using matplotlib
+                    gcc_H = results['grand_composite_curve']['H']
+                    gcc_T = results['grand_composite_curve']['T']
+                    heat_cascade = results['heat_cascade']
+                    fig2, ax2 = plt.subplots(figsize=(8, 5), dpi=120)
+                    for i in range(len(gcc_H) - 1):
+                        color = 'red' if i < len(heat_cascade) and heat_cascade[i]['deltaH'] > 0 else ('blue' if i < len(heat_cascade) and heat_cascade[i]['deltaH'] < 0 else 'gray')
+                        ax2.plot([gcc_H[i], gcc_H[i+1]], [gcc_T[i], gcc_T[i+1]], color=color, linewidth=2, marker='o', markersize=6)
+                    ax2.axhline(y=results['pinch_temperature'], linestyle='--', color='gray', linewidth=1.5, label=f"Pinch: {results['pinch_temperature']:.1f}°C")
+                    ax2.axvline(x=0, color='black', linewidth=0.5, alpha=0.3)
+                    ax2.set_xlabel('Net ΔH (kW)', fontsize=11)
+                    ax2.set_ylabel('Shifted Temperature (°C)', fontsize=11)
+                    ax2.set_title('Grand Composite Curve', fontsize=13, fontweight='bold')
+                    ax2.legend(loc='best')
+                    ax2.grid(True, alpha=0.3)
+                    ax2.set_ylim(bottom=0)
+                    buf2 = BytesIO()
+                    fig2.savefig(buf2, format='png', bbox_inches='tight', facecolor='white')
+                    buf2.seek(0)
+                    gcc_plot_b64 = base64.b64encode(buf2.getvalue()).decode('utf-8')
+                    plt.close(fig2)
+                    
+                    # Generate Temperature Interval Diagram using matplotlib
+                    interval_plot_b64 = None
+                    temps = results['temperatures']
+                    pinch_streams = results['streams']
+                    if pinch_streams and temps:
+                        fig3, ax3 = plt.subplots(figsize=(8, 5), dpi=120)
+                        num_streams = len(pinch_streams)
+                        x_positions = [(i + 1) * 1.0 for i in range(num_streams)]
+                        
+                        # Draw horizontal temperature lines
+                        for temperature in temps:
+                            ax3.axhline(y=temperature, color='gray', linewidth=0.5, linestyle=':', alpha=0.7)
+                        
+                        # Draw pinch line
+                        ax3.axhline(y=results['pinch_temperature'], color='black', linewidth=2, linestyle='--')
+                        
+                        # Draw stream bars
+                        for i, stream in enumerate(pinch_streams):
+                            ss, st_temp = stream['ss'], stream['st']
+                            color = 'red' if stream['type'] == 'HOT' else 'blue'
+                            ax3.plot([x_positions[i], x_positions[i]], [ss, st_temp], color=color, linewidth=8, solid_capstyle='round')
+                            
+                            # Draw arrow
+                            arrow_y = st_temp + (0.02 * (max(temps) - min(temps))) if stream['type'] == 'HOT' else st_temp - (0.02 * (max(temps) - min(temps)))
+                            ax3.annotate('', xy=(x_positions[i], st_temp), xytext=(x_positions[i], ss),
+                                        arrowprops=dict(arrowstyle='->', color=color, lw=2))
+                            
+                            # Label
+                            ax3.text(x_positions[i], max(ss, st_temp) + (max(temps) - min(temps)) * 0.04, f'S{i+1}', 
+                                    ha='center', va='bottom', fontsize=10, fontweight='bold', color='white',
+                                    bbox=dict(boxstyle='round,pad=0.2', facecolor=color, edgecolor='none'))
+                        
+                        ax3.set_xlabel('Streams', fontsize=11)
+                        ax3.set_ylabel('Shifted Temperature (°C)', fontsize=11)
+                        ax3.set_title('Temperature Interval Diagram', fontsize=13, fontweight='bold')
+                        ax3.set_xlim(0, num_streams + 1)
+                        ax3.set_xticks([])
+                        ax3.grid(True, alpha=0.3, axis='y')
+                        buf3 = BytesIO()
+                        fig3.savefig(buf3, format='png', bbox_inches='tight', facecolor='white')
+                        buf3.seek(0)
+                        interval_plot_b64 = base64.b64encode(buf3.getvalue()).decode('utf-8')
+                        plt.close(fig3)
+                    
+                    # Build pinch analysis section HTML
+                    pinch_section_html = f"""
+                    <h2>📊 Potential Analysis</h2>
+                    
+                    <h3>Selected Streams</h3>
+                    {streams_table_html}
+                    
+                    <h3>Pinch Analysis Results (ΔTmin = {tmin}°C)</h3>
+                    <div class="metrics-row">
+                        <div class="metric-card hot">
+                            <div class="metric-label">Hot Utility</div>
+                            <div class="metric-value">{results['hot_utility']:.2f} kW</div>
+                        </div>
+                        <div class="metric-card cold">
+                            <div class="metric-label">Cold Utility</div>
+                            <div class="metric-value">{results['cold_utility']:.2f} kW</div>
+                        </div>
+                        <div class="metric-card pinch">
+                            <div class="metric-label">Pinch Temperature</div>
+                            <div class="metric-value">{results['pinch_temperature']:.1f} °C</div>
+                        </div>
+                    </div>
+                    
+                    <h3>Diagrams</h3>
+                    <div class="plots-container">
+                        <div class="plot-section">
+                            <img src="data:image/png;base64,{composite_plot_b64}" alt="Composite Curves">
+                        </div>
+                        <div class="plot-section">
+                            <img src="data:image/png;base64,{gcc_plot_b64}" alt="Grand Composite Curve">
+                        </div>
+                    </div>
+                    {"<div class='plots-container'><div class='plot-section'><img src='data:image/png;base64," + interval_plot_b64 + "' alt='Temperature Interval Diagram'></div></div>" if interval_plot_b64 else ""}
+                    
+                    <h3>📝 Pinch Analysis Notes</h3>
+                    <div class="notes-section">
+                        {pinch_notes_html}
+                    </div>
+                    """
+                    
+                finally:
+                    os.unlink(temp_csv_path)
+            else:
+                pinch_section_html = """
+                <h2>📊 Potential Analysis</h2>
+                <p><em>Not enough streams selected for pinch analysis. Select at least 2 streams with complete data.</em></p>
+                """
+        except Exception as e:
+            pinch_section_html = f"""
+            <h2>📊 Potential Analysis</h2>
+            <p><em>Error generating pinch analysis: {str(e)}</em></p>
+            """
+    else:
+        pinch_section_html = """
+        <h2>📊 Potential Analysis</h2>
+        <p><em>Pinch analysis module not available.</em></p>
+        """
+    
     # Generate HTML
     html_content = f"""<!DOCTYPE html>
 <html lang="en">
@@ -667,7 +982,7 @@ def generate_report():
     <style>
         body {{
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            max-width: 2400px;
+            max-width: 1800px;
             margin: 0 auto;
             padding: 20px;
             background-color: #f5f5f5;
@@ -685,10 +1000,13 @@ def generate_report():
         }}
         h2 {{
             color: #34495e;
-            margin-top: 30px;
+            margin-top: 40px;
+            border-bottom: 2px solid #e0e0e0;
+            padding-bottom: 8px;
         }}
         h3 {{
             color: #7f8c8d;
+            margin-top: 25px;
         }}
         .timestamp {{
             color: #95a5a6;
@@ -705,8 +1023,8 @@ def generate_report():
         .map-section {{
             text-align: center;
             flex: 1;
-            min-width: 1000px;
-            max-width: 1500px;
+            min-width: 500px;
+            max-width: 850px;
         }}
         .map-section img {{
             max-width: 100%;
@@ -742,6 +1060,88 @@ def generate_report():
             height: 60px;
             width: auto;
         }}
+        .streams-table {{
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }}
+        .streams-table th, .streams-table td {{
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }}
+        .streams-table th {{
+            background-color: #f8f9fa;
+            font-weight: bold;
+        }}
+        .streams-table tr:nth-child(even) {{
+            background-color: #f9f9f9;
+        }}
+        .badge {{
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 12px;
+        }}
+        .badge.hot {{
+            background-color: #ffebee;
+            color: #c62828;
+        }}
+        .badge.cold {{
+            background-color: #e3f2fd;
+            color: #1565c0;
+        }}
+        .metrics-row {{
+            display: flex;
+            gap: 30px;
+            margin: 30px 0;
+            flex-wrap: wrap;
+        }}
+        .metric-card {{
+            flex: 1;
+            min-width: 200px;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }}
+        .metric-card.hot {{
+            background-color: #ffebee;
+            border: 2px solid #ef9a9a;
+        }}
+        .metric-card.cold {{
+            background-color: #e3f2fd;
+            border: 2px solid #90caf9;
+        }}
+        .metric-card.pinch {{
+            background-color: #f3e5f5;
+            border: 2px solid #ce93d8;
+        }}
+        .metric-label {{
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 8px;
+        }}
+        .metric-value {{
+            font-size: 28px;
+            font-weight: bold;
+            color: #333;
+        }}
+        .plots-container {{
+            display: flex;
+            gap: 30px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin: 30px 0;
+        }}
+        .plot-section {{
+            text-align: center;
+        }}
+        .plot-section img {{
+            max-width: 100%;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }}
         @media print {{
             body {{
                 background-color: white;
@@ -774,10 +1174,12 @@ def generate_report():
             </div>
         </div>
         
-        <h3>📝 Notes</h3>
+        <h3>📝 Data Collection Notes</h3>
         <div class="notes-section">
             {notes_html}
         </div>
+        
+        {pinch_section_html}
     </div>
 </body>
 </html>"""
