@@ -165,118 +165,19 @@ def generate_process_level_map():
     return base_img
 
 def generate_subprocess_level_map():
-    """Generate a map image showing subprocesses with connections."""
-    snapshots_dict = st.session_state.get('map_snapshots', {})
-    active_base = st.session_state.get('current_base', 'OpenStreetMap')
+    """Generate a map image showing subprocesses - uses the actual rendered canvas from data_collection."""
     
-    if active_base == 'Blank':
-        base_img = Image.new('RGBA', (800, 600), (242, 242, 243, 255))
-    else:
-        chosen_bytes = snapshots_dict.get(active_base) or st.session_state.get('map_snapshot')
-        if not chosen_bytes:
-            return None
-        base_img = Image.open(BytesIO(chosen_bytes)).convert("RGBA")
-    
-    w, h = base_img.size
-    draw = ImageDraw.Draw(base_img)
-    
-    # Load font
-    BOX_FONT_SIZE = 16
-    try:
-        font = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", BOX_FONT_SIZE)
-    except (OSError, IOError):
+    # First, try to use the saved subprocess canvas image from data_collection
+    # This has ALL the correct styling: connections, energy data, colors, arrows, etc.
+    subprocess_canvas_bytes = st.session_state.get('subprocess_canvas_image')
+    if subprocess_canvas_bytes:
         try:
-            font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", BOX_FONT_SIZE)
-        except (OSError, IOError):
-            try:
-                font = ImageFont.truetype("DejaVuSans.ttf", BOX_FONT_SIZE)
-            except (OSError, IOError):
-                font = ImageFont.load_default()
+            return Image.open(BytesIO(subprocess_canvas_bytes)).convert("RGBA")
+        except Exception:
+            pass  # Fall back to generating the image
     
-    processes = st.session_state.get('processes', [])
-    map_center = st.session_state.get('map_center', [0, 0])
-    map_zoom = st.session_state.get('map_zoom', 17.5)
-    
-    # Collect positioned subprocesses
-    positioned = []
-    for idx, proc in enumerate(processes):
-        coords = proc.get('coordinates', {})
-        lat = coords.get('lat')
-        lon = coords.get('lon')
-        if lat is not None and lon is not None:
-            try:
-                lat_f = float(lat)
-                lon_f = float(lon)
-                px, py = snapshot_lonlat_to_pixel(
-                    lon_f, lat_f,
-                    (map_center[1], map_center[0]),
-                    map_zoom, w, h
-                )
-                if px < -50 or py < -20 or px > w + 50 or py > h + 20:
-                    continue
-                
-                label = proc.get('name', f'Subprocess {idx + 1}')
-                scale = float(proc.get('box_scale', 1.0) or 1.0)
-                padding = int(6 * scale)
-                text_bbox = draw.textbbox((0, 0), label, font=font)
-                tw = text_bbox[2] - text_bbox[0]
-                th = text_bbox[3] - text_bbox[1]
-                box_w = int(tw * scale + padding * 2)
-                box_h = int(th * scale + padding * 2)
-                x0 = int(px - box_w / 2)
-                y0 = int(py - box_h / 2)
-                x1 = x0 + box_w
-                y1 = y0 + box_h
-                
-                positioned.append({
-                    'idx': idx,
-                    'label': label,
-                    'center': (px, py),
-                    'box': (x0, y0, x1, y1),
-                    'next': proc.get('connection', '')
-                })
-            except (ValueError, TypeError):
-                continue
-    
-    # Draw connections first
-    name_to_center = {p['label'].lower(): p['center'] for p in positioned}
-    for p in positioned:
-        if p['next']:
-            next_name = p['next'].lower()
-            if next_name in name_to_center:
-                start = p['center']
-                end = name_to_center[next_name]
-                draw.line([start, end], fill=(100, 100, 100, 200), width=2)
-                # Draw arrowhead
-                import math
-                angle = math.atan2(end[1] - start[1], end[0] - start[0])
-                arrow_len = 10
-                arrow_angle = math.pi / 6
-                ax1 = end[0] - arrow_len * math.cos(angle - arrow_angle)
-                ay1 = end[1] - arrow_len * math.sin(angle - arrow_angle)
-                ax2 = end[0] - arrow_len * math.cos(angle + arrow_angle)
-                ay2 = end[1] - arrow_len * math.sin(angle + arrow_angle)
-                draw.polygon([(end[0], end[1]), (ax1, ay1), (ax2, ay2)], fill=(100, 100, 100, 200))
-    
-    # Draw subprocess boxes
-    for p in positioned:
-        x0, y0, x1, y1 = p['box']
-        fill_color = (255, 255, 220, 245)
-        border_color = (180, 140, 60, 255)
-        text_color = (80, 60, 20, 255)
-        draw.rectangle([x0, y0, x1, y1], fill=fill_color, outline=border_color, width=2)
-        
-        # Draw label
-        text_bbox = draw.textbbox((0, 0), p['label'], font=font)
-        tw = text_bbox[2] - text_bbox[0]
-        th = text_bbox[3] - text_bbox[1]
-        box_w = x1 - x0
-        box_h = y1 - y0
-        text_x = x0 + (box_w - tw) // 2
-        text_y = y0 + (box_h - th) // 2
-        draw.text((text_x, text_y), p['label'], fill=text_color, font=font)
-    
-    return base_img
+    # Fallback: if no saved canvas, return None (user needs to open subprocess view in data collection first)
+    return None
 
 def generate_report():
     """Generate an HTML report with process maps and notes."""
@@ -408,7 +309,7 @@ def generate_report():
                 <p>Process Overview</p>
             </div>
             <div class="map-section">
-                {"<img src='data:image/png;base64," + subprocess_map_b64 + "' alt='Subprocess Connections'>" if subprocess_map_b64 else "<p>Subprocess map not available</p>"}
+                {"<img src='data:image/png;base64," + subprocess_map_b64 + "' alt='Subprocess Connections'>" if subprocess_map_b64 else "<p><em>Subprocess map not captured. To include this map, go to Data Collection, expand a process using the 'Map' toggle to view subprocesses, then return here and generate the report again.</em></p>"}
                 <p>Subprocess Connections</p>
             </div>
         </div>

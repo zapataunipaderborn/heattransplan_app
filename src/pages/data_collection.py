@@ -3069,6 +3069,17 @@ div.leaflet-container {background: #f2f2f3 !important;}
 
                 # Present snapshot full width (base selector moved to top bar)
                 img = base_img  # for coordinate capture
+                
+                # Save the rendered subprocess canvas image to session state for report generation
+                # This captures the exact view with all connections, energy data, colors, etc.
+                process_subprocess_map_exp = st.session_state.get('process_subprocess_map_expanded', {})
+                any_subprocess_view_active = any(process_subprocess_map_exp.get(g, False) for g in process_subprocess_map_exp)
+                if any_subprocess_view_active:
+                    # Save as PNG bytes
+                    subprocess_canvas_buffer = BytesIO()
+                    base_img.save(subprocess_canvas_buffer, format='PNG')
+                    st.session_state['subprocess_canvas_image'] = subprocess_canvas_buffer.getvalue()
+                
                 coords = streamlit_image_coordinates(img, key="meas_img", width=w)
                 if st.session_state['placement_mode'] and coords is not None and st.session_state.get('placing_process_idx') is not None:
                     x_px, y_px = coords['x'], coords['y']
