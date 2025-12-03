@@ -765,59 +765,6 @@ else:
                         )
                         
                         st.plotly_chart(fig_interval, width='stretch', key="interval_chart")
-                    
-                    st.markdown("---")
-                    
-                    # Problem Table
-                    st.markdown("##### Problem Table")
-                    if results['problem_table']:
-                        problem_df = pd.DataFrame(results['problem_table'])
-                        # Rename columns for clarity
-                        col_rename = {
-                            'T': 'T (°C)',
-                            'deltaT': 'ΔT (°C)',
-                            'cpHot': 'ΣCP Hot (kW/K)',
-                            'cpCold': 'ΣCP Cold (kW/K)',
-                            'deltaCp': 'ΔCP (kW/K)',
-                            'deltaH': 'ΔH (kW)'
-                        }
-                        problem_df = problem_df.rename(columns={k: v for k, v in col_rename.items() if k in problem_df.columns})
-                        st.dataframe(problem_df, width='stretch', hide_index=True)
-                    else:
-                        st.info("No problem table data available")
-                    
-                    # Heat Cascades side by side
-                    cascade_col1, cascade_col2 = st.columns(2)
-                    
-                    with cascade_col1:
-                        st.markdown("##### Unfeasible Heat Cascade")
-                        if results['unfeasible_heat_cascade']:
-                            # Add temperature column to dataframe
-                            unfeasible_data = []
-                            for i, item in enumerate(results['unfeasible_heat_cascade']):
-                                row = {'T (°C)': temps[i+1] if i+1 < len(temps) else '', 
-                                       'ΔH (kW)': item['deltaH'], 
-                                       'Cascade (kW)': item['exitH']}
-                                unfeasible_data.append(row)
-                            unfeasible_df = pd.DataFrame(unfeasible_data)
-                            st.dataframe(unfeasible_df, width='stretch', hide_index=True)
-                        else:
-                            st.info("No unfeasible cascade data")
-                    
-                    with cascade_col2:
-                        st.markdown("##### Feasible Heat Cascade")
-                        if results['heat_cascade']:
-                            # Add temperature column to dataframe
-                            feasible_data = []
-                            for i, item in enumerate(results['heat_cascade']):
-                                row = {'T (°C)': temps[i+1] if i+1 < len(temps) else '', 
-                                       'ΔH (kW)': item['deltaH'], 
-                                       'Cascade (kW)': item['exitH']}
-                                feasible_data.append(row)
-                            feasible_df = pd.DataFrame(feasible_data)
-                            st.dataframe(feasible_df, width='stretch', hide_index=True)
-                        else:
-                            st.info("No feasible cascade data")
                 
             except Exception as e:
                 st.error(f"Error: {str(e)}")
