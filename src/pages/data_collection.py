@@ -2309,6 +2309,9 @@ div.leaflet-container {background: #f2f2f3 !important;}
 
                 # Second pass: draw arrows (under boxes for clarity -> so draw now, then boxes after?)
                 # We'll draw arrows first then boxes so boxes sit on top.
+                # Also collect product stream info for labeling on connection arrows
+                connection_product_streams = []  # List of (src_idx, tgt_idx, start_x, start_y, end_x, end_y, streams)
+                
                 for src in positioned:
                     raw_next = src['next_raw']
                     if not raw_next:
@@ -2361,7 +2364,119 @@ div.leaflet-container {background: #f2f2f3 !important;}
                             end_x = tx - vec_dx * t_t * 1.02
                             end_y = ty - vec_dy * t_t * 1.02
                             _draw_arrow(draw, start_x, start_y, end_x, end_y, color=(0, 0, 0, 245), width=5)
-
+                            
+                            # Collect product streams from source subprocess for labeling on this connection
+                            if src.get('type') == 'subprocess':
+                                src_proc = st.session_state['processes'][src['idx']]
+                                src_streams = src_proc.get('streams', []) or []
+                                product_streams = [s for s in src_streams if s.get('type', 'product') == 'product']
+                                if product_streams:
+                                    connection_product_streams.append({
+                                        'src_idx': src['idx'],
+                                        'tgt_idx': tgt['idx'],
+                                        'start_x': start_x,
+                                        'start_y': start_y,
+                                        'end_x': end_x,
+                                        'end_y': end_y,
+                                        'streams': product_streams
+                                    })
+                
+                # Draw product stream labels along connection arrows
+                def _draw_connection_stream_label(draw_ctx, start_x, start_y, end_x, end_y, streams, font_obj):
+                    """Draw product stream info below the connection line between processes."""
+                    import math as _m
+                    from PIL import ImageFont
+                    
+                    # Try to create a smaller font for stream labels
+                    small_font = None
+                    try:
+                        small_font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 10)
+                    except:
+                        try:
+                            small_font = ImageFont.truetype("arial.ttf", 10)
+                        except:
+                            small_font = font_obj  # fallback to regular font
+                    
+                    # Collect values from all product streams
+                    all_parts = []
+                    
+                    for s in streams:
+                        # Get values from properties/values structure
+                        props = s.get('properties', {})
+                        vals = s.get('values', {})
+                        
+                        tin_val = ''
+                        tout_val = ''
+                        mdot_val = ''
+                        cp_val = ''
+                        
+                        if isinstance(props, dict) and isinstance(vals, dict):
+                            for pk, pname in props.items():
+                                vk = pk.replace('prop', 'val')
+                                v = vals.get(vk, '')
+                                if pname == 'Tin' and v:
+                                    tin_val = v
+                                elif pname == 'Tout' and v:
+                                    tout_val = v
+                                elif pname == 'ṁ' and v:
+                                    mdot_val = v
+                                elif pname == 'cp' and v:
+                                    cp_val = v
+                        
+                        # Fallback to legacy fields
+                        if not tin_val:
+                            tin_val = s.get('temp_in', '')
+                        if not tout_val:
+                            tout_val = s.get('temp_out', '')
+                        if not mdot_val:
+                            mdot_val = s.get('mdot', '')
+                        if not cp_val:
+                            cp_val = s.get('cp', '')
+                        
+                        # Build compact parts
+                        if tin_val:
+                            all_parts.append(f"Tin={tin_val}")
+                        if tout_val:
+                            all_parts.append(f"Tout={tout_val}")
+                        if mdot_val:
+                            all_parts.append(f"ṁ={mdot_val}")
+                        if cp_val:
+                            all_parts.append(f"cp={cp_val}")
+                    
+                    if not all_parts:
+                        return
+                    
+                    # Combine all values into one compact label
+                    full_label = " | ".join(all_parts)
+                    
+                    # Calculate midpoint of the connection line
+                    mid_x = (start_x + end_x) / 2
+                    mid_y = (start_y + end_y) / 2
+                    
+                    perp_offset = 18  # pixels below the line
+                    
+                    # Calculate text dimensions with smaller font
+                    if small_font:
+                        tb = draw_ctx.textbbox((0, 0), full_label, font=small_font)
+                        t_width = tb[2] - tb[0]
+                        t_height = tb[3] - tb[1]
+                    else:
+                        t_width = len(full_label) * 5
+                        t_height = 8
+                    
+                    # Position label below the midpoint
+                    lx = int(mid_x - t_width / 2)
+                    ly = int(mid_y + perp_offset)
+                    
+                    # Draw white background
+                    draw_ctx.rectangle([lx - 3, ly - 1, lx + t_width + 3, ly + t_height + 1], 
+                                       fill=(255, 255, 255, 235), outline=(120, 120, 120, 150))
+                    # Draw text with smaller font
+                    if small_font:
+                        draw_ctx.text((lx, ly), full_label, fill=(0, 70, 0, 255), font=small_font)
+                    else:
+                        draw_ctx.text((lx, ly), full_label, fill=(0, 70, 0, 255))
+                
                 # Third pass: draw boxes & labels on top
                 for item in positioned:
                     x0, y0, x1, y1 = item['box']
@@ -2410,6 +2525,16 @@ div.leaflet-container {background: #f2f2f3 !important;}
                         draw.text((ct_x, ct_y), label, fill=text_color, font=font)
                     else:
                         draw.text((ct_x, ct_y), label, fill=text_color)
+
+                # Draw all product stream labels on connections (after boxes so they appear on top)
+                for conn in connection_product_streams:
+                    _draw_connection_stream_label(
+                        draw, 
+                        conn['start_x'], conn['start_y'], 
+                        conn['end_x'], conn['end_y'], 
+                        conn['streams'], 
+                        font
+                    )
 
                 # Sixth pass: draw subprocess overlays for expanded process groups
                 process_subprocess_map_expanded = st.session_state.get('process_subprocess_map_expanded', {})
@@ -2615,12 +2740,18 @@ div.leaflet-container {background: #f2f2f3 !important;}
                     streams = proc.get('streams', []) or []
                     if not streams:
                         continue
+                    
+                    # Filter out product streams (they are shown on horizontal connection arrows)
+                    non_product_streams = [s for s in streams if s.get('type', 'product') != 'product']
+                    if not non_product_streams:
+                        continue
+                        
                     x0, y0, x1, y1 = item['box']
                     box_center_x = (x0 + x1) / 2
-                    n_streams = len(streams)
+                    n_streams = len(non_product_streams)
                     # Dynamic spacing: attempt to shrink if narrow box; ensure minimum 28 px spacing
                     stream_h_spacing = max(28, min(base_stream_spacing, (x1 - x0 - 20) / max(1, n_streams))) if n_streams > 1 else 0
-                    for s_i, s in enumerate(streams):
+                    for s_i, s in enumerate(non_product_streams):
                         offset = (s_i - (n_streams - 1)/2) * stream_h_spacing
                         sx = int(box_center_x + offset)
                         # Attempt to parse temperatures
