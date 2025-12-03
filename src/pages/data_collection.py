@@ -220,16 +220,16 @@ def render_stream_recursive(st_module, stream, stream_key, parent_node, stream_i
         st_module.rerun()
     
     # All stream types use the same selection logic with different preselected defaults
-    display_options = ["Tout", "ṁ", "cp", "CP"]
+    display_options = ["Tin", "Tout", "ṁ", "cp", "CP"]
     
     # Define default preselected variables based on stream type
     stream_type = stream.get('type', 'product')
     if stream_type == 'product':
-        default_display = ["Tout", "ṁ", "cp"]
+        default_display = ["Tin", "Tout", "ṁ", "cp"]
     elif stream_type == 'steam':
-        default_display = ["ṁ"]
+        default_display = ["Tin", "ṁ"]
     else:  # air, water, etc.
-        default_display = ["ṁ"]
+        default_display = ["Tin", "ṁ"]
     
     # Initialize display_vars in session state if not present
     display_key = f"{stream_key}_display_vars"
@@ -245,12 +245,12 @@ def render_stream_recursive(st_module, stream, stream_key, parent_node, stream_i
         "Variables",
         options=display_options,
         key=display_key,
-        help="Select variables to enter (Tin is always shown)"
+        help="Select variables to enter"
     )
     stream['display_vars'] = selected_display
     
-    # Build list of properties to show: Tin always + selected ones
-    props_to_show = ["Tin"] + selected_display
+    # Build list of properties to show based on selection
+    props_to_show = selected_display
     n_props = len(props_to_show)
     
     if n_props > 0:
@@ -1488,16 +1488,16 @@ with left:
                                 st.rerun()
                             
                             # All stream types use the same selection logic with different preselected defaults
-                            display_options = ["Tout", "ṁ", "cp", "CP"]
+                            display_options = ["Tin", "Tout", "ṁ", "cp", "CP"]
                             
                             # Define default preselected variables based on stream type
                             stream_type = s.get('type', 'product')
                             if stream_type == 'product':
-                                default_display = ["Tout", "ṁ", "cp"]
+                                default_display = ["Tin", "Tout", "ṁ", "cp"]
                             elif stream_type == 'steam':
-                                default_display = ["ṁ"]
+                                default_display = ["Tin", "ṁ"]
                             else:  # air, water, etc.
-                                default_display = ["ṁ"]
+                                default_display = ["Tin", "ṁ"]
                             
                             # Initialize display_vars in session state if not present
                             display_key = f"s_display_vars_{i}_{si}"
@@ -1512,12 +1512,12 @@ with left:
                                 "Variables",
                                 options=display_options,
                                 key=display_key,
-                                help="Select variables to enter (Tin is always shown)"
+                                help="Select variables to enter"
                             )
                             s['display_vars'] = selected_display
                             
-                            # Build list of properties to show: Tin always + selected ones
-                            props_to_show = ["Tin"] + selected_display
+                            # Build list of properties to show based on selection
+                            props_to_show = selected_display
                             n_props = len(props_to_show)
                             
                             if n_props > 0:
