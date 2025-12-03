@@ -350,6 +350,9 @@ def save_app_state():
         'proc_group_expanded': st.session_state.get('proc_group_expanded', []),
         'proc_group_coordinates': st.session_state.get('proc_group_coordinates', {}),
         'proc_group_info_expanded': st.session_state.get('proc_group_info_expanded', []),
+        # Save notes
+        'project_notes': st.session_state.get('project_notes', ''),
+        'pinch_notes': st.session_state.get('pinch_notes', ''),
     }
     
     # Convert snapshots to base64 for JSON serialization
@@ -385,6 +388,10 @@ def load_app_state(state_json):
         st.session_state['proc_group_coordinates'] = converted_coords
         
         st.session_state['proc_group_info_expanded'] = state.get('proc_group_info_expanded', [])
+        
+        # Restore notes
+        st.session_state['project_notes'] = state.get('project_notes', '')
+        st.session_state['pinch_notes'] = state.get('pinch_notes', '')
         
         # Restore snapshots from base64
         encoded_snapshots = state.get('map_snapshots_encoded', {})
