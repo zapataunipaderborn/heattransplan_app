@@ -201,7 +201,7 @@ class Pinch:
 
         self.coldUtility = exitH
         if pinchInterval == 0:
-            self.pinchTemperature = self.temperatureInterval[pinchInterval]['t1']
+            self.pinchTemperature = self.temperatureInterval[pinchInterval]['t2']
         else:
             self.pinchTemperature = self.temperatureInterval[pinchInterval]['t2']
 
