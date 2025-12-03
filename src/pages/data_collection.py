@@ -951,7 +951,11 @@ with left:
                 gh_cols = st.columns([0.05, 0.45, 0.18, 0.15, 0.12, 0.05])
                 g_toggle_label = "▾" if st.session_state['proc_group_expanded'][g] else "▸"
                 if gh_cols[0].button(g_toggle_label, key=f"group_toggle_{g}"):
-                    st.session_state['proc_group_expanded'][g] = not st.session_state['proc_group_expanded'][g]
+                    new_state = not st.session_state['proc_group_expanded'][g]
+                    st.session_state['proc_group_expanded'][g] = new_state
+                    # If collapsing, also collapse the subprocess map view
+                    if not new_state:
+                        st.session_state['process_subprocess_map_expanded'][g] = False
                     st.rerun()
                 default_name = st.session_state['proc_group_names'][g]
                 new_name = gh_cols[1].text_input("Group name", value=default_name, key=f"group_name_{g}", label_visibility="collapsed", placeholder=f"Group {g+1}")
@@ -1255,7 +1259,11 @@ with left:
                     header_cols = st.columns([0.06, 0.54, 0.14, 0.16, 0.10])
                     toggle_label = "▾" if st.session_state['proc_expanded'][i] else "▸"
                     if header_cols[0].button(toggle_label, key=f"proc_toggle_{i}"):
-                        st.session_state['proc_expanded'][i] = not st.session_state['proc_expanded'][i]
+                        new_state = not st.session_state['proc_expanded'][i]
+                        st.session_state['proc_expanded'][i] = new_state
+                        # If collapsing, also collapse the sub-subprocess map view
+                        if not new_state:
+                            st.session_state['subprocess_map_expanded'][i] = False
                         st.rerun()
                     # Default auto-name if empty
                     if not p.get('name'):
