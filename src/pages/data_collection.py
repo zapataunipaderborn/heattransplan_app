@@ -219,53 +219,114 @@ def render_stream_recursive(st_module, stream, stream_key, parent_node, stream_i
         delete_stream_from_node(parent_node, stream_index)
         st_module.rerun()
     
-    # Property selection
-    prop_options = ["Tin", "Tout", "ṁ", "cp", "Water Content In", "Water Content Out", "Density", "Pressure", "Notes"]
-    prop_cols = st_module.columns([1, 1, 1, 1])
+    # For product streams: Tin always shown, other variables are selectable
+    if stream['type'] == 'product':
+        display_options = ["Tout", "ṁ", "cp", "CP"]
+        
+        # Initialize display_vars in session state if not present
+        display_key = f"{stream_key}_display_vars"
+        if display_key not in st_module.session_state:
+            # Use existing stream setting or default to empty (user selects what they want)
+            current_display = stream.get('display_vars', [])
+            current_display = [v for v in current_display if v in display_options]
+            st_module.session_state[display_key] = current_display
+        
+        selected_display = st_module.multiselect(
+            "Additional variables",
+            options=display_options,
+            key=display_key,
+            help="Select which additional variables to enter (Tin is always required)"
+        )
+        stream['display_vars'] = selected_display
+        
+        # Build list of properties to show: Tin always + selected ones
+        props_to_show = ["Tin"] + selected_display
+        n_props = len(props_to_show)
+        
+        if n_props > 0:
+            prop_cols = st_module.columns(n_props)
+            for pi, prop_name in enumerate(props_to_show):
+                with prop_cols[pi]:
+                    st_module.caption(prop_name)
+                    val_key = f"product_{prop_name}"
+                    current_val = stream.get('product_values', {}).get(prop_name, '')
+                    
+                    new_val = st_module.text_input(
+                        prop_name,
+                        value=str(current_val),
+                        key=f"{stream_key}_pval_{prop_name}",
+                        label_visibility="collapsed"
+                    )
+                    
+                    # Store in product_values dict
+                    if 'product_values' not in stream:
+                        stream['product_values'] = {}
+                    stream['product_values'][prop_name] = new_val
+        
+        # Update legacy fields for compatibility
+        pv = stream.get('product_values', {})
+        stream['temp_in'] = pv.get('Tin', '')
+        stream['temp_out'] = pv.get('Tout', '')
+        stream['mdot'] = pv.get('ṁ', '')
+        stream['cp'] = pv.get('cp', '')
+        
+        # Also update properties/values structure for drawing
+        stream['properties'] = {'prop1': 'Tin'}
+        stream['values'] = {'val1': pv.get('Tin', '')}
+        idx = 2
+        for var in selected_display:
+            stream['properties'][f'prop{idx}'] = var
+            stream['values'][f'val{idx}'] = pv.get(var, '')
+            idx += 1
     
-    for pi, (prop_key, val_key) in enumerate([('prop1', 'val1'), ('prop2', 'val2'), ('prop3', 'val3'), ('prop4', 'val4')]):
-        with prop_cols[pi]:
-            current_prop = stream['properties'].get(prop_key, prop_options[pi])
-            if current_prop not in prop_options:
-                current_prop = prop_options[pi]
-            
-            stream['properties'][prop_key] = st_module.selectbox(
-                f"Property {pi+1}",
-                options=prop_options,
-                index=prop_options.index(current_prop),
-                key=f"{stream_key}_prop_{pi}",
-                label_visibility="collapsed"
-            )
-            
-            selected_prop = stream['properties'][prop_key]
-            if selected_prop == "Notes":
-                stream['values'][val_key] = st_module.text_area(
-                    f"Value {pi+1}",
-                    value=str(stream['values'].get(val_key, '')),
-                    key=f"{stream_key}_val_{pi}",
-                    height=60,
+    else:
+        # Non-product streams: use the original 4-column property layout
+        prop_options = ["Tin", "Tout", "ṁ", "cp", "CP", "Water Content In", "Water Content Out", "Density", "Pressure", "Notes"]
+        prop_cols = st_module.columns([1, 1, 1, 1])
+        
+        for pi, (prop_key, val_key) in enumerate([('prop1', 'val1'), ('prop2', 'val2'), ('prop3', 'val3'), ('prop4', 'val4')]):
+            with prop_cols[pi]:
+                current_prop = stream['properties'].get(prop_key, prop_options[pi])
+                if current_prop not in prop_options:
+                    current_prop = prop_options[pi]
+                
+                stream['properties'][prop_key] = st_module.selectbox(
+                    f"Property {pi+1}",
+                    options=prop_options,
+                    index=prop_options.index(current_prop),
+                    key=f"{stream_key}_prop_{pi}",
                     label_visibility="collapsed"
                 )
-            else:
-                stream['values'][val_key] = st_module.text_input(
-                    f"Value {pi+1}",
-                    value=str(stream['values'].get(val_key, '')),
-                    key=f"{stream_key}_val_{pi}",
-                    label_visibility="collapsed"
-                )
-    
-    # Update legacy fields
-    for pi, (prop_key, val_key) in enumerate([('prop1', 'val1'), ('prop2', 'val2'), ('prop3', 'val3'), ('prop4', 'val4')]):
-        prop = stream['properties'].get(prop_key, '')
-        val = stream['values'].get(val_key, '')
-        if prop == 'Tin':
-            stream['temp_in'] = val
-        elif prop == 'Tout':
-            stream['temp_out'] = val
-        elif prop == 'ṁ':
-            stream['mdot'] = val
-        elif prop == 'cp':
-            stream['cp'] = val
+                
+                selected_prop = stream['properties'][prop_key]
+                if selected_prop == "Notes":
+                    stream['values'][val_key] = st_module.text_area(
+                        f"Value {pi+1}",
+                        value=str(stream['values'].get(val_key, '')),
+                        key=f"{stream_key}_val_{pi}",
+                        height=60,
+                        label_visibility="collapsed"
+                    )
+                else:
+                    stream['values'][val_key] = st_module.text_input(
+                        f"Value {pi+1}",
+                        value=str(stream['values'].get(val_key, '')),
+                        key=f"{stream_key}_val_{pi}",
+                        label_visibility="collapsed"
+                    )
+        
+        # Update legacy fields
+        for pi, (prop_key, val_key) in enumerate([('prop1', 'val1'), ('prop2', 'val2'), ('prop3', 'val3'), ('prop4', 'val4')]):
+            prop = stream['properties'].get(prop_key, '')
+            val = stream['values'].get(val_key, '')
+            if prop == 'Tin':
+                stream['temp_in'] = val
+            elif prop == 'Tout':
+                stream['temp_out'] = val
+            elif prop == 'ṁ':
+                stream['mdot'] = val
+            elif prop == 'cp':
+                stream['cp'] = val
 
 
 # Helper: convert pixel relative to center in snapshot to lon/lat using Web Mercator math
@@ -1446,63 +1507,120 @@ with left:
                                 delete_stream_from_process(st.session_state, i, si)
                                 st.rerun()
                             
-                            # Property selection row: 4 columns with property dropdown + value input
-                            prop_options = ["Tin", "Tout", "ṁ", "cp", "Water Content In", "Water Content Out", "Density", "Pressure", "Notes"]
+                            # For product streams: Tin always shown, other variables are selectable
+                            if s['type'] == 'product':
+                                display_options = ["Tout", "ṁ", "cp", "CP"]
+                                display_key = f"s_display_vars_{i}_{si}"
+                                if display_key not in st.session_state:
+                                    current_display = s.get('display_vars', [])
+                                    current_display = [v for v in current_display if v in display_options]
+                                    st.session_state[display_key] = current_display
+                                
+                                selected_display = st.multiselect(
+                                    "Additional variables",
+                                    options=display_options,
+                                    key=display_key,
+                                    help="Select which additional variables to enter (Tin is always required)"
+                                )
+                                s['display_vars'] = selected_display
+                                
+                                # Build list of properties to show: Tin always + selected ones
+                                props_to_show = ["Tin"] + selected_display
+                                n_props = len(props_to_show)
+                                
+                                if n_props > 0:
+                                    prop_cols = st.columns(n_props)
+                                    for pi, prop_name in enumerate(props_to_show):
+                                        with prop_cols[pi]:
+                                            st.caption(prop_name)
+                                            current_val = s.get('product_values', {}).get(prop_name, '')
+                                            
+                                            new_val = st.text_input(
+                                                prop_name,
+                                                value=str(current_val),
+                                                key=f"s_pval_{prop_name}_{i}_{si}",
+                                                label_visibility="collapsed"
+                                            )
+                                            
+                                            # Store in product_values dict
+                                            if 'product_values' not in s:
+                                                s['product_values'] = {}
+                                            s['product_values'][prop_name] = new_val
+                                
+                                # Update legacy fields for compatibility
+                                pv = s.get('product_values', {})
+                                s['temp_in'] = pv.get('Tin', '')
+                                s['temp_out'] = pv.get('Tout', '')
+                                s['mdot'] = pv.get('ṁ', '')
+                                s['cp'] = pv.get('cp', '')
+                                
+                                # Also update properties/values structure for drawing
+                                s['properties'] = {'prop1': 'Tin'}
+                                s['values'] = {'val1': pv.get('Tin', '')}
+                                idx = 2
+                                for var in selected_display:
+                                    s['properties'][f'prop{idx}'] = var
+                                    s['values'][f'val{idx}'] = pv.get(var, '')
+                                    idx += 1
                             
-                            # Initialize property mappings if not exist
-                            if 'properties' not in s:
-                                s['properties'] = {
-                                    'prop1': 'Tin',
-                                    'prop2': 'Tout', 
-                                    'prop3': 'ṁ',
-                                    'prop4': 'cp'
-                                }
-                            if 'values' not in s:
-                                s['values'] = {
-                                    'val1': s.get('temp_in', ''),
-                                    'val2': s.get('temp_out', ''),
-                                    'val3': s.get('mdot', ''),
-                                    'val4': s.get('cp', '')
-                                }
-                            
-                            prop_cols = st.columns([1, 1, 1, 1])
-                            for pi, (prop_key, val_key) in enumerate([('prop1', 'val1'), ('prop2', 'val2'), ('prop3', 'val3'), ('prop4', 'val4')]):
-                                with prop_cols[pi]:
-                                    current_prop = s['properties'].get(prop_key, prop_options[pi])
-                                    if current_prop not in prop_options:
-                                        current_prop = prop_options[pi]
-                                    
-                                    s['properties'][prop_key] = st.selectbox(
-                                        f"Property {pi+1}",
-                                        options=prop_options,
-                                        index=prop_options.index(current_prop),
-                                        key=f"s_prop_{pi}_{i}_{si}",
-                                        label_visibility="collapsed"
-                                    )
-                                    
-                                    # Show input based on selected property
-                                    selected_prop = s['properties'][prop_key]
-                                    if selected_prop == "Notes":
-                                        s['values'][val_key] = st.text_area(
-                                            f"Value {pi+1}",
-                                            value=str(s['values'].get(val_key, '')),
-                                            key=f"s_val_{pi}_{i}_{si}",
-                                            height=60,
+                            else:
+                                # Non-product streams: use the original 4-column property layout
+                                prop_options = ["Tin", "Tout", "ṁ", "cp", "CP", "Water Content In", "Water Content Out", "Density", "Pressure", "Notes"]
+                                
+                                # Initialize property mappings if not exist
+                                if 'properties' not in s:
+                                    s['properties'] = {
+                                        'prop1': 'Tin',
+                                        'prop2': 'Tout', 
+                                        'prop3': 'ṁ',
+                                        'prop4': 'cp'
+                                    }
+                                if 'values' not in s:
+                                    s['values'] = {
+                                        'val1': s.get('temp_in', ''),
+                                        'val2': s.get('temp_out', ''),
+                                        'val3': s.get('mdot', ''),
+                                        'val4': s.get('cp', '')
+                                    }
+                                
+                                prop_cols = st.columns([1, 1, 1, 1])
+                                for pi, (prop_key, val_key) in enumerate([('prop1', 'val1'), ('prop2', 'val2'), ('prop3', 'val3'), ('prop4', 'val4')]):
+                                    with prop_cols[pi]:
+                                        current_prop = s['properties'].get(prop_key, prop_options[pi])
+                                        if current_prop not in prop_options:
+                                            current_prop = prop_options[pi]
+                                        
+                                        s['properties'][prop_key] = st.selectbox(
+                                            f"Property {pi+1}",
+                                            options=prop_options,
+                                            index=prop_options.index(current_prop),
+                                            key=f"s_prop_{pi}_{i}_{si}",
                                             label_visibility="collapsed"
                                         )
-                                    else:
-                                        s['values'][val_key] = st.text_input(
-                                            f"Value {pi+1}",
-                                            value=str(s['values'].get(val_key, '')),
-                                            key=f"s_val_{pi}_{i}_{si}",
-                                            label_visibility="collapsed"
-                                        )
-                            
-                            # Update legacy fields for backward compatibility
-                            s['temp_in'] = s['values'].get('val1', '') if s['properties'].get('prop1') == 'Tin' else s.get('temp_in', '')
-                            s['temp_out'] = s['values'].get('val2', '') if s['properties'].get('prop2') == 'Tout' else s.get('temp_out', '')
-                            s['mdot'] = s['values'].get('val3', '') if s['properties'].get('prop3') == 'ṁ' else s.get('mdot', '')
-                            s['cp'] = s['values'].get('val4', '') if s['properties'].get('prop4') == 'cp' else s.get('cp', '')
+                                        
+                                        # Show input based on selected property
+                                        selected_prop = s['properties'][prop_key]
+                                        if selected_prop == "Notes":
+                                            s['values'][val_key] = st.text_area(
+                                                f"Value {pi+1}",
+                                                value=str(s['values'].get(val_key, '')),
+                                                key=f"s_val_{pi}_{i}_{si}",
+                                                height=60,
+                                                label_visibility="collapsed"
+                                            )
+                                        else:
+                                            s['values'][val_key] = st.text_input(
+                                                f"Value {pi+1}",
+                                                value=str(s['values'].get(val_key, '')),
+                                                key=f"s_val_{pi}_{i}_{si}",
+                                                label_visibility="collapsed"
+                                            )
+                                
+                                # Update legacy fields for backward compatibility
+                                s['temp_in'] = s['values'].get('val1', '') if s['properties'].get('prop1') == 'Tin' else s.get('temp_in', '')
+                                s['temp_out'] = s['values'].get('val2', '') if s['properties'].get('prop2') == 'Tout' else s.get('temp_out', '')
+                                s['mdot'] = s['values'].get('val3', '') if s['properties'].get('prop3') == 'ṁ' else s.get('mdot', '')
+                                s['cp'] = s['values'].get('val4', '') if s['properties'].get('prop4') == 'cp' else s.get('cp', '')
                         
                         # =====================================================
                         # SUB-SUBPROCESSES SECTION - Recursive children
@@ -2401,27 +2519,37 @@ div.leaflet-container {background: #f2f2f3 !important;}
                     all_parts = []
                     
                     for s in streams:
-                        # Get values from properties/values structure
-                        props = s.get('properties', {})
-                        vals = s.get('values', {})
+                        # Get display variables setting (Tin is always shown)
+                        display_vars = s.get('display_vars', [])
                         
-                        tin_val = ''
-                        tout_val = ''
-                        mdot_val = ''
-                        cp_val = ''
+                        # Try to get values from product_values first (new structure)
+                        pv = s.get('product_values', {})
                         
-                        if isinstance(props, dict) and isinstance(vals, dict):
-                            for pk, pname in props.items():
-                                vk = pk.replace('prop', 'val')
-                                v = vals.get(vk, '')
-                                if pname == 'Tin' and v:
-                                    tin_val = v
-                                elif pname == 'Tout' and v:
-                                    tout_val = v
-                                elif pname == 'ṁ' and v:
-                                    mdot_val = v
-                                elif pname == 'cp' and v:
-                                    cp_val = v
+                        tin_val = pv.get('Tin', '')
+                        tout_val = pv.get('Tout', '')
+                        mdot_val = pv.get('ṁ', '')
+                        cp_val = pv.get('cp', '')
+                        CP_val = pv.get('CP', '')
+                        
+                        # Fallback to properties/values structure
+                        if not tin_val or not tout_val or not mdot_val or not cp_val:
+                            props = s.get('properties', {})
+                            vals = s.get('values', {})
+                            
+                            if isinstance(props, dict) and isinstance(vals, dict):
+                                for pk, pname in props.items():
+                                    vk = pk.replace('prop', 'val')
+                                    v = vals.get(vk, '')
+                                    if pname == 'Tin' and v and not tin_val:
+                                        tin_val = v
+                                    elif pname == 'Tout' and v and not tout_val:
+                                        tout_val = v
+                                    elif pname == 'ṁ' and v and not mdot_val:
+                                        mdot_val = v
+                                    elif pname == 'cp' and v and not cp_val:
+                                        cp_val = v
+                                    elif pname == 'CP' and v and not CP_val:
+                                        CP_val = v
                         
                         # Fallback to legacy fields
                         if not tin_val:
@@ -2433,15 +2561,17 @@ div.leaflet-container {background: #f2f2f3 !important;}
                         if not cp_val:
                             cp_val = s.get('cp', '')
                         
-                        # Build compact parts
+                        # Build parts based on display_vars (Tin is always shown)
                         if tin_val:
                             all_parts.append(f"Tin={tin_val}")
-                        if tout_val:
+                        if tout_val and "Tout" in display_vars:
                             all_parts.append(f"Tout={tout_val}")
-                        if mdot_val:
+                        if mdot_val and "ṁ" in display_vars:
                             all_parts.append(f"ṁ={mdot_val}")
-                        if cp_val:
+                        if cp_val and "cp" in display_vars:
                             all_parts.append(f"cp={cp_val}")
+                        if CP_val and "CP" in display_vars:
+                            all_parts.append(f"CP={CP_val}")
                     
                     if not all_parts:
                         return
