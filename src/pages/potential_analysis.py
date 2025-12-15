@@ -1810,6 +1810,11 @@ else:
                         hpi_analysis.deleteTemperaturePockets()
                         hpi_analysis.GCCSource, hpi_analysis.GCCSink = hpi_analysis.splitHotandCold()
                         
+                        # Check if there are sufficient hot and cold streams for heat pump integration
+                        if not hpi_analysis.GCCSource['T'] or not hpi_analysis.GCCSink['T']:
+                            st.warning("⚠️ Heat pump integration is not possible with the selected streams. The Grand Composite Curve does not have both heating and cooling requirements suitable for heat pump integration.")
+                            raise ValueError("Insufficient streams for heat pump integration")
+                        
                         # First run to get available heat pumps
                         hpi_analysis.IntegrateHeatPump()
                         hpi_analysis.findIntegration()
@@ -2078,10 +2083,13 @@ else:
                     finally:
                         os.unlink(hpi_csv_path)
                         
+                except ValueError as ve:
+                    # This is our custom error for insufficient streams
+                    pass  # Warning already shown above
+                except IndexError:
+                    st.warning("⚠️ Heat pump integration is not possible with the selected streams. Please select streams with both heating and cooling requirements that allow for heat pump integration.")
                 except Exception as hpi_error:
-                    st.error(f"Error generating HPI analysis: {str(hpi_error)}")
-                    import traceback
-                    st.code(traceback.format_exc())
+                    st.warning(f"⚠️ Heat pump integration could not be performed with the selected streams: {str(hpi_error)}")
                 
                 # Notes section
                 st.markdown("---")
