@@ -1963,17 +1963,17 @@ else:
                                 hp_integration_data = [hp for hp in all_hp_integration_data if hp['name'] in selected_hps]
                                 
                                 # Create columns for legend and chart within hpi_col2
-                                legend_col, chart_col = st.columns([0.20, 0.80])
+                                legend_col, chart_col = st.columns([0.15, 0.85])
                                 
                                 with legend_col:
                                     # Create custom legend with larger symbols
                                     st.markdown("**Legend**")
-                                    legend_html = '<div style="margin-top: 10px; margin-left: 40px;">'
+                                    legend_html = '<div style="margin-top: 10px; margin-left: 15px;">'
                                     for idx, hp_data in enumerate(hp_integration_data):
                                         color = hp_colors[idx % len(hp_colors)]
                                         hp_name = hp_data['name']
-                                        legend_html += f'<div style="margin: 8px 0; display: flex; align-items: center; gap: 8px;"><span style="font-size: 28px; color: {color}; font-weight: bold; line-height: 1;">◆</span><span style="font-size: 13px;">{hp_name} - Source</span></div>'
-                                        legend_html += f'<div style="margin: 8px 0; display: flex; align-items: center; gap: 8px;"><span style="font-size: 28px; color: {color}; font-weight: bold; line-height: 1;">◇</span><span style="font-size: 13px;">{hp_name} - Sink</span></div>'
+                                        legend_html += f'<div style="margin: 8px 0; display: flex; align-items: center; gap: 10px;"><span style="font-size: 36px; color: {color}; font-weight: bold; line-height: 1;">◆</span><span style="font-size: 15px;">{hp_name} - Source</span></div>'
+                                        legend_html += f'<div style="margin: 8px 0; display: flex; align-items: center; gap: 10px;"><span style="font-size: 36px; color: {color}; font-weight: bold; line-height: 1;">◇</span><span style="font-size: 15px;">{hp_name} - Sink</span></div>'
                                     legend_html += '</div>'
                                     st.markdown(legend_html, unsafe_allow_html=True)
                                 
