@@ -54,7 +54,7 @@ st.markdown(
     .stTextInput input, .stNumberInput input {font-size:10px !important; padding:0.1rem 0.2rem !important;}
     h1 {font-size: 1.5rem !important; margin-bottom: 0.3rem !important;}
     /* Compact layout */
-    .block-container {padding-top: 1rem !important; padding-bottom: 0 !important;}
+    .block-container {padding-top: 2rem !important; padding-bottom: 0 !important;}
     div[data-testid="stVerticalBlock"] > div {padding: 0 !important; margin: 0 !important;}
     hr {margin: 0.3rem 0 !important;}
     .stCheckbox {margin: 0 !important; padding: 0 !important;}
@@ -1345,7 +1345,7 @@ else:
             for stream_idx, stream in enumerate(streams):
                 stream_key = f"stream_{idx}_{stream_idx}"
                 if stream_key not in st.session_state['selected_items']:
-                    st.session_state['selected_items'][stream_key] = False
+                    st.session_state['selected_items'][stream_key] = True
                 
                 stream_cols = st.columns([0.05, 0.25, 0.7])
                 stream_selected = stream_cols[0].checkbox(
