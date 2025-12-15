@@ -978,16 +978,19 @@ def generate_report():
                                             """
                                         hp_table_html += "</tbody></table>"
                                         
-                                        # Generate HPI plot for top 3 heat pumps
+                                        # Generate HPI plot with all heat pumps and dropdown selector
                                         gcc_H = hpi_analysis.GCCdraw['H']
                                         gcc_T = hpi_analysis.GCCdraw['T']
-                                        hp_colors = ['#00CC96', '#AB63FA', '#FFA15A']
+                                        hp_colors = ['#00CC96', '#AB63FA', '#FFA15A', '#19D3F3', '#FF6692', '#B6E880', '#FF97FF', '#FECB52']
                                         
                                         # Create HPI figure
                                         fig_hpi = go.Figure()
                                         
-                                        # Plot GCC segments
-                                        for i in range(len(gcc_H) - 1):
+                                        # Count GCC segments (they'll be visible for all heat pumps)
+                                        num_gcc_segments = len(gcc_H) - 1
+                                        
+                                        # Plot GCC segments (always visible)
+                                        for i in range(num_gcc_segments):
                                             if i < len(hpi_analysis.pyPinch.heatCascade):
                                                 dh = hpi_analysis.pyPinch.heatCascade[i]['deltaH']
                                                 color = 'red' if dh > 0 else ('blue' if dh < 0 else 'gray')
@@ -1000,11 +1003,15 @@ def generate_report():
                                                 mode='lines+markers',
                                                 line=dict(color=color, width=2),
                                                 marker=dict(size=5),
-                                                showlegend=False
+                                                showlegend=False,
+                                                visible=True  # Always visible
                                             ))
                                         
-                                        # Add integration points for top 3 heat pumps
-                                        for idx, hp_data in enumerate(all_hp_data[:3]):
+                                        # Store integration data for all heat pumps
+                                        hp_integration_traces = []
+                                        
+                                        # Add integration points for ALL available heat pumps
+                                        for idx, hp_data in enumerate(all_hp_data):
                                             # Re-run integration for this heat pump
                                             hpi_analysis.KoWP = []
                                             hpi_analysis.EvWP = []
@@ -1019,39 +1026,75 @@ def generate_report():
                                                 int_temp = hpi_analysis.IntegrationPoint['Temp'][-1]
                                                 int_qsource = hpi_analysis.IntegrationPoint['QQuelle'][-1]
                                                 int_qsink = hpi_analysis.IntegrationPoint['QSenke'][-1]
+                                                int_cop = hpi_analysis.IntegrationPoint['COP'][-1]
                                                 t_sink = hpi_analysis.Tsinkout
                                                 
-                                                # Add source marker
+                                                # Add source marker (visible only for first HP initially)
                                                 fig_hpi.add_trace(go.Scatter(
                                                     x=[int_qsource], y=[int_temp],
                                                     mode='markers',
                                                     marker=dict(size=14, color=color, symbol='diamond', 
                                                               line=dict(width=2, color=color)),
                                                     name=f'{hp_name} - Source',
-                                                    showlegend=True
+                                                    showlegend=True,
+                                                    visible=(idx == 0),  # Only first HP visible by default
+                                                    hovertemplate=f'<b>{hp_name} - Source</b><br>T: {int_temp:.1f}°C<br>Q: {int_qsource:.1f} kW<br>COP: {int_cop:.2f}<extra></extra>'
                                                 ))
                                                 
-                                                # Add sink marker
+                                                # Add sink marker (visible only for first HP initially)
                                                 fig_hpi.add_trace(go.Scatter(
                                                     x=[int_qsink], y=[t_sink],
                                                     mode='markers',
                                                     marker=dict(size=14, color=color, symbol='diamond-open',
                                                               line=dict(width=2, color=color)),
                                                     name=f'{hp_name} - Sink',
-                                                    showlegend=True
+                                                    showlegend=True,
+                                                    visible=(idx == 0),  # Only first HP visible by default
+                                                    hovertemplate=f'<b>{hp_name} - Sink</b><br>T: {t_sink:.1f}°C<br>Q: {int_qsink:.1f} kW<br>COP: {int_cop:.2f}<extra></extra>'
                                                 ))
+                                                
+                                                hp_integration_traces.append({
+                                                    'name': hp_name,
+                                                    'cop': int_cop,
+                                                    'source_idx': len(fig_hpi.data) - 2,
+                                                    'sink_idx': len(fig_hpi.data) - 1
+                                                })
+                                        
+                                        # Create dropdown buttons for heat pump selection
+                                        buttons = []
+                                        for i, hp_trace in enumerate(hp_integration_traces):
+                                            # Create visibility list: GCC always visible, only selected HP visible
+                                            visible = [True] * num_gcc_segments  # GCC segments always visible
+                                            for j in range(len(hp_integration_traces)):
+                                                visible.append(j == i)  # source marker
+                                                visible.append(j == i)  # sink marker
+                                            
+                                            buttons.append(dict(
+                                                label=f"{hp_trace['name']} (COP: {hp_trace['cop']:.2f})",
+                                                method="update",
+                                                args=[{"visible": visible}]
+                                            ))
                                         
                                         # Add pinch line
                                         fig_hpi.add_hline(y=pinch_obj.pinchTemperature, line_dash='dash', line_color='gray',
                                                         annotation_text=f"Pinch: {pinch_obj.pinchTemperature:.1f}°C")
                                         fig_hpi.add_vline(x=0, line_color='black', line_width=1, opacity=0.3)
                                         
+                                        # Update layout with dropdown
                                         fig_hpi.update_layout(
-                                            title='Heat Pump Integration - Grand Composite Curve',
                                             xaxis_title='Net ΔH (kW)',
                                             yaxis_title='Shifted Temperature (°C)',
                                             height=600, width=900,
-                                            yaxis=dict(rangemode='tozero')
+                                            yaxis=dict(rangemode='tozero'),
+                                            updatemenus=[dict(
+                                                type="dropdown",
+                                                x=0.02, xanchor="left",
+                                                y=1.02, yanchor="top",
+                                                buttons=buttons,
+                                                bgcolor="white",
+                                                bordercolor="gray",
+                                                borderwidth=1
+                                            )] if buttons else []
                                         )
                                         
                                         hpi_plot_html = fig_hpi.to_html(full_html=False, include_plotlyjs=False)
