@@ -220,7 +220,7 @@ def render_stream_recursive(st_module, stream, stream_key, parent_node, stream_i
         st_module.rerun()
     
     # All stream types use the same selection logic with different preselected defaults
-    display_options = ["Tin", "Tout", "ṁ", "cp", "CP"]
+    display_options = ["Tin", "Tout", "ṁ", "cp", "CP", "Water Content In", "Water Content Out", "Density", "Pressure"]
     
     # Define default preselected variables based on stream type
     stream_type = stream.get('type', 'product')
@@ -228,7 +228,9 @@ def render_stream_recursive(st_module, stream, stream_key, parent_node, stream_i
         default_display = ["Tin", "Tout", "ṁ", "cp"]
     elif stream_type == 'steam':
         default_display = ["Tin", "ṁ"]
-    else:  # air, water, etc.
+    elif stream_type == 'water':
+        default_display = ["Tin", "ṁ", "Water Content In", "Water Content Out"]
+    else:  # air, etc.
         default_display = ["Tin", "ṁ"]
     
     # Initialize display_vars in session state if not present
@@ -1488,7 +1490,7 @@ with left:
                                 st.rerun()
                             
                             # All stream types use the same selection logic with different preselected defaults
-                            display_options = ["Tin", "Tout", "ṁ", "cp", "CP"]
+                            display_options = ["Tin", "Tout", "ṁ", "cp", "CP", "Water Content In", "Water Content Out", "Density", "Pressure"]
                             
                             # Define default preselected variables based on stream type
                             stream_type = s.get('type', 'product')
@@ -1496,7 +1498,9 @@ with left:
                                 default_display = ["Tin", "Tout", "ṁ", "cp"]
                             elif stream_type == 'steam':
                                 default_display = ["Tin", "ṁ"]
-                            else:  # air, water, etc.
+                            elif stream_type == 'water':
+                                default_display = ["Tin", "ṁ", "Water Content In", "Water Content Out"]
+                            else:  # air, etc.
                                 default_display = ["Tin", "ṁ"]
                             
                             # Initialize display_vars in session state if not present
