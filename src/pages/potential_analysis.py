@@ -1198,7 +1198,7 @@ def generate_report():
         <p><em>Pinch analysis module not available.</em></p>
         """
     
-    # Generate HTML
+    # Generate HTML with multi-page navigation
     html_content = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1237,8 +1237,54 @@ def generate_report():
         .timestamp {{
             color: #95a5a6;
             font-size: 14px;
-            margin-bottom: 30px;
+            margin-bottom: 20px;
         }}
+        
+        /* Navigation Tabs */
+        .nav-tabs {{
+            display: flex;
+            gap: 0;
+            border-bottom: 3px solid #3498db;
+            margin-bottom: 30px;
+            padding: 0;
+            list-style: none;
+        }}
+        .nav-tab {{
+            padding: 15px 30px;
+            background-color: #ecf0f1;
+            cursor: pointer;
+            border: none;
+            font-size: 16px;
+            font-weight: 600;
+            color: #34495e;
+            transition: all 0.3s ease;
+            border-top-left-radius: 6px;
+            border-top-right-radius: 6px;
+            margin-bottom: -3px;
+        }}
+        .nav-tab:hover {{
+            background-color: #d5dbdb;
+        }}
+        .nav-tab.active {{
+            background-color: #3498db;
+            color: white;
+            border-bottom: 3px solid #3498db;
+        }}
+        
+        /* Page Content */
+        .page-content {{
+            display: none;
+        }}
+        .page-content.active {{
+            display: block;
+            animation: fadeIn 0.3s ease-in;
+        }}
+        
+        @keyframes fadeIn {{
+            from {{ opacity: 0; }}
+            to {{ opacity: 1; }}
+        }}
+        
         .maps-container {{
             display: flex;
             gap: 30px;
@@ -1403,6 +1449,16 @@ def generate_report():
                 box-shadow: none;
                 padding: 20px;
             }}
+            .nav-tabs {{
+                display: none;
+            }}
+            .page-content {{
+                display: block !important;
+                page-break-before: always;
+            }}
+            .page-content:first-of-type {{
+                page-break-before: auto;
+            }}
         }}
     </style>
 </head>
@@ -1414,26 +1470,56 @@ def generate_report():
         </div>
         <p class="timestamp">Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}</p>
         
-        <h2>📍 Data Collection</h2>
+        <!-- Navigation Tabs -->
+        <ul class="nav-tabs">
+            <li class="nav-tab active" onclick="showPage('data-collection')">📍 Data Collection</li>
+            <li class="nav-tab" onclick="showPage('potential-analysis')">📊 Potential Analysis</li>
+        </ul>
         
-        <div class="maps-container">
-            <div class="map-section">
-                {"<img src='data:image/png;base64," + process_map_b64 + "' alt='Process'>" if process_map_b64 else "<p>Process map not available</p>"}
-                <p>Process</p>
+        <!-- Page 1: Data Collection -->
+        <div id="data-collection" class="page-content active">
+            <h2>📍 Data Collection</h2>
+            
+            <div class="maps-container">
+                <div class="map-section">
+                    {"<img src='data:image/png;base64," + process_map_b64 + "' alt='Process'>" if process_map_b64 else "<p>Process map not available</p>"}
+                    <p>Process</p>
+                </div>
+                <div class="map-section">
+                    {"<img src='data:image/png;base64," + subprocess_map_b64 + "' alt='Subprocess'>" if subprocess_map_b64 else "<p>No subprocesses with coordinates found.</p>"}
+                    <p>Subprocess</p>
+                </div>
             </div>
-            <div class="map-section">
-                {"<img src='data:image/png;base64," + subprocess_map_b64 + "' alt='Subprocess'>" if subprocess_map_b64 else "<p>No subprocesses with coordinates found.</p>"}
-                <p>Subprocess</p>
+            
+            <h3>📝 Data Collection Notes</h3>
+            <div class="notes-section">
+                {notes_html}
             </div>
         </div>
         
-        <h3>📝 Data Collection Notes</h3>
-        <div class="notes-section">
-            {notes_html}
+        <!-- Page 2: Potential Analysis -->
+        <div id="potential-analysis" class="page-content">
+            {pinch_section_html}
         </div>
-        
-        {pinch_section_html}
     </div>
+    
+    <script>
+        function showPage(pageId) {{
+            // Hide all pages
+            const pages = document.querySelectorAll('.page-content');
+            pages.forEach(page => page.classList.remove('active'));
+            
+            // Remove active class from all tabs
+            const tabs = document.querySelectorAll('.nav-tab');
+            tabs.forEach(tab => tab.classList.remove('active'));
+            
+            // Show selected page
+            document.getElementById(pageId).classList.add('active');
+            
+            // Activate selected tab
+            event.target.classList.add('active');
+        }}
+    </script>
 </body>
 </html>"""
     
