@@ -1084,17 +1084,30 @@ def generate_report():
                                         fig_hpi.update_layout(
                                             xaxis_title='Net ΔH (kW)',
                                             yaxis_title='Shifted Temperature (°C)',
-                                            height=600, width=900,
-                                            yaxis=dict(rangemode='tozero'),
+                                            height=600,
+                                            width=1100,
+                                            xaxis=dict(domain=[0.35, 1], rangemode='tozero'),
+                                            yaxis=dict(domain=[0, 1], rangemode='tozero'),
+                                            showlegend=True,
+                                            legend=dict(
+                                                x=0.01,
+                                                y=0.5,
+                                                xanchor='left',
+                                                yanchor='middle',
+                                                bgcolor='rgba(255,255,255,0.8)',
+                                                bordercolor='gray',
+                                                borderwidth=1
+                                            ),
                                             updatemenus=[dict(
                                                 type="dropdown",
-                                                x=0.02, xanchor="left",
-                                                y=1.02, yanchor="top",
+                                                x=0.01, xanchor="left",
+                                                y=1, yanchor="top",
                                                 buttons=buttons,
                                                 bgcolor="white",
                                                 bordercolor="gray",
                                                 borderwidth=1
-                                            )] if buttons else []
+                                            )] if buttons else [],
+                                            margin=dict(l=20, r=20, t=40, b=50)
                                         )
                                         
                                         hpi_plot_html = fig_hpi.to_html(full_html=False, include_plotlyjs=False)
@@ -1363,17 +1376,24 @@ def generate_report():
         }}
         .hpi-layout {{
             display: flex;
+            flex-direction: row;
+            flex-wrap: nowrap;
             gap: 20px;
             margin: 30px 0;
             align-items: flex-start;
         }}
         .hpi-table-section {{
             flex: 0 0 35%;
-            min-width: 350px;
+            max-width: 35%;
+            min-width: 300px;
         }}
         .hpi-plot-section {{
             flex: 1;
             min-width: 0;
+            max-width: 65%;
+        }}
+        .hpi-plot-section > div {{
+            width: 100% !important;
         }}
         @media print {{
             body {{
