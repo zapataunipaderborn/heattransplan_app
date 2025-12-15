@@ -1909,7 +1909,7 @@ else:
                         
                         # Show heat pump comparison table on left and chart on right
                         if all_hp_data:
-                            hpi_col1, hpi_col2 = st.columns([0.5, 0.5])
+                            hpi_col1, hpi_spacer, hpi_col2 = st.columns([0.35, 0.05, 0.60])
                             
                             with hpi_col1:
                                 st.markdown("##### 🔍 Heat Pump Comparison")
@@ -1940,11 +1940,11 @@ else:
                                 # Sort available heat pumps by COP (descending)
                                 available_data.sort(key=lambda x: x['cop_value'], reverse=True)
                                 
-                                # Build HTML table with colored symbols (both filled and open diamonds)
-                                table_html = '<style>.hp-table{width:100%;border-collapse:collapse;font-size:12px;}.hp-table th{background-color:#f0f0f0;padding:8px;text-align:left;border:1px solid #ddd;font-weight:bold;}.hp-table td{padding:8px;border:1px solid #ddd;}.hp-table tr:nth-child(even){background-color:#f9f9f9;}.hp-symbol{font-size:72px;font-weight:bold;line-height:1;}</style><table class="hp-table"><thead><tr><th>Heat Pump</th><th>COP</th><th>T_source (°C)</th><th>T_sink (°C)</th><th>Q_source (kW)</th><th>Q_sink (kW)</th><th>Symbol</th></tr></thead><tbody>'
+                                # Build table without symbols
+                                table_html = '<style>.hp-table{width:100%;border-collapse:collapse;font-size:12px;}.hp-table th{background-color:#f0f0f0;padding:8px;text-align:left;border:1px solid #ddd;font-weight:bold;}.hp-table td{padding:8px;border:1px solid #ddd;}.hp-table tr:nth-child(even){background-color:#f9f9f9;}</style><table class="hp-table"><thead><tr><th>Heat Pump</th><th>COP</th><th>T_source (°C)</th><th>T_sink (°C)</th><th>Q_source (kW)</th><th>Q_sink (kW)</th></tr></thead><tbody>'
                                 
                                 for item in available_data:
-                                    table_html += f'<tr><td>{item["Heat Pump"]}</td><td>{item["COP"]}</td><td>{item["T_source (°C)"]}</td><td>{item["T_sink (°C)"]}</td><td>{item["Q_source (kW)"]}</td><td>{item["Q_sink (kW)"]}</td><td class="hp-symbol" style="color: {item["color"]};">◆◇</td></tr>'
+                                    table_html += f'<tr><td>{item["Heat Pump"]}</td><td>{item["COP"]}</td><td>{item["T_source (°C)"]}</td><td>{item["T_sink (°C)"]}</td><td>{item["Q_source (kW)"]}</td><td>{item["Q_sink (kW)"]}</td></tr>'
                                 
                                 table_html += '</tbody></table>'
                                 
@@ -1962,86 +1962,102 @@ else:
                                 # Filter integration data based on selection
                                 hp_integration_data = [hp for hp in all_hp_integration_data if hp['name'] in selected_hps]
                                 
-                                # Create Plotly figure for HPI
-                                fig_hpi = go.Figure()
+                                # Create columns for legend and chart within hpi_col2
+                                legend_col, chart_col = st.columns([0.20, 0.80])
                                 
-                                # Plot GCC segments with colors (red for heating, blue for cooling)
-                                for i in range(len(gcc_H) - 1):
-                                    # Determine color based on deltaH
-                                    if i < len(hpi_analysis.pyPinch.heatCascade):
-                                        dh = hpi_analysis.pyPinch.heatCascade[i]['deltaH']
-                                        color = 'red' if dh > 0 else ('blue' if dh < 0 else 'gray')
-                                    else:
-                                        color = 'gray'
+                                with legend_col:
+                                    # Create custom legend with larger symbols
+                                    st.markdown("**Legend**")
+                                    legend_html = '<div style="margin-top: 10px; margin-left: 40px;">'
+                                    for idx, hp_data in enumerate(hp_integration_data):
+                                        color = hp_colors[idx % len(hp_colors)]
+                                        hp_name = hp_data['name']
+                                        legend_html += f'<div style="margin: 8px 0; display: flex; align-items: center; gap: 8px;"><span style="font-size: 28px; color: {color}; font-weight: bold; line-height: 1;">◆</span><span style="font-size: 13px;">{hp_name} - Source</span></div>'
+                                        legend_html += f'<div style="margin: 8px 0; display: flex; align-items: center; gap: 8px;"><span style="font-size: 28px; color: {color}; font-weight: bold; line-height: 1;">◇</span><span style="font-size: 13px;">{hp_name} - Sink</span></div>'
+                                    legend_html += '</div>'
+                                    st.markdown(legend_html, unsafe_allow_html=True)
+                                
+                                with chart_col:
+                                    # Create Plotly figure for HPI
+                                    fig_hpi = go.Figure()
                                     
-                                    fig_hpi.add_trace(go.Scatter(
-                                        x=[gcc_H[i], gcc_H[i+1]],
-                                        y=[gcc_T[i], gcc_T[i+1]],
-                                        mode='lines+markers',
-                                        line=dict(color=color, width=2),
-                                        marker=dict(size=5),
-                                        showlegend=False,
-                                        hovertemplate='T: %{y:.1f}°C<br>H: %{x:.1f} kW<extra></extra>'
-                                    ))
-                                
-                                # Add integration points for each selected heat pump
-                                for idx, hp_data in enumerate(hp_integration_data):
-                                    color = hp_colors[idx % len(hp_colors)]
-                                    hp_name = hp_data['name']
-                                    int_temp = hp_data['int_temp']
-                                    int_qsource = hp_data['int_qsource']
-                                    int_qsink = hp_data['int_qsink']
-                                    int_cop = hp_data['int_cop']
-                                    t_sink = hp_data['t_sink']
+                                    # Plot GCC segments with colors (red for heating, blue for cooling)
+                                    for i in range(len(gcc_H) - 1):
+                                        # Determine color based on deltaH
+                                        if i < len(hpi_analysis.pyPinch.heatCascade):
+                                            dh = hpi_analysis.pyPinch.heatCascade[i]['deltaH']
+                                            color = 'red' if dh > 0 else ('blue' if dh < 0 else 'gray')
+                                        else:
+                                            color = 'gray'
+                                        
+                                        fig_hpi.add_trace(go.Scatter(
+                                            x=[gcc_H[i], gcc_H[i+1]],
+                                            y=[gcc_T[i], gcc_T[i+1]],
+                                            mode='lines+markers',
+                                            line=dict(color=color, width=2),
+                                            marker=dict(size=5),
+                                            showlegend=False,
+                                            hovertemplate='T: %{y:.1f}°C<br>H: %{x:.1f} kW<extra></extra>'
+                                        ))
                                     
-                                    # Add diamond markers for source (evaporator)
-                                    fig_hpi.add_trace(go.Scatter(
-                                        x=[int_qsource],
-                                        y=[int_temp],
-                                        mode='markers',
-                                        marker=dict(size=12, color=color, symbol='diamond', 
-                                                  line=dict(width=2, color=color)),
-                                        name=f'{hp_name} - Source',
-                                        legendgroup=hp_name,
-                                        hovertemplate=f'<b>{hp_name} - Source</b><br>T: {int_temp:.1f}°C<br>Q: {int_qsource:.1f} kW<br>COP: {int_cop:.2f}<extra></extra>'
-                                    ))
+                                    # Add integration points for each selected heat pump
+                                    for idx, hp_data in enumerate(hp_integration_data):
+                                        color = hp_colors[idx % len(hp_colors)]
+                                        hp_name = hp_data['name']
+                                        int_temp = hp_data['int_temp']
+                                        int_qsource = hp_data['int_qsource']
+                                        int_qsink = hp_data['int_qsink']
+                                        int_cop = hp_data['int_cop']
+                                        t_sink = hp_data['t_sink']
+                                        
+                                        # Add diamond markers for source (evaporator)
+                                        fig_hpi.add_trace(go.Scatter(
+                                            x=[int_qsource],
+                                            y=[int_temp],
+                                            mode='markers',
+                                            marker=dict(size=12, color=color, symbol='diamond', 
+                                                      line=dict(width=2, color=color)),
+                                            name=f'{hp_name} - Source',
+                                            legendgroup=hp_name,
+                                            hovertemplate=f'<b>{hp_name} - Source</b><br>T: {int_temp:.1f}°C<br>Q: {int_qsource:.1f} kW<br>COP: {int_cop:.2f}<extra></extra>'
+                                        ))
+                                        
+                                        # Add diamond markers for sink (condenser)
+                                        fig_hpi.add_trace(go.Scatter(
+                                            x=[int_qsink],
+                                            y=[t_sink],
+                                            mode='markers',
+                                            marker=dict(size=12, color=color, symbol='diamond-open',
+                                                      line=dict(width=2, color=color)),
+                                            name=f'{hp_name} - Sink',
+                                            legendgroup=hp_name,
+                                            hovertemplate=f'<b>{hp_name} - Sink</b><br>T: {t_sink:.1f}°C<br>Q: {int_qsink:.1f} kW<br>COP: {int_cop:.2f}<extra></extra>'
+                                        ))
                                     
-                                    # Add diamond markers for sink (condenser)
-                                    fig_hpi.add_trace(go.Scatter(
-                                        x=[int_qsink],
-                                        y=[t_sink],
-                                        mode='markers',
-                                        marker=dict(size=12, color=color, symbol='diamond-open',
-                                                  line=dict(width=2, color=color)),
-                                        name=f'{hp_name} - Sink',
-                                        legendgroup=hp_name,
-                                        hovertemplate=f'<b>{hp_name} - Sink</b><br>T: {t_sink:.1f}°C<br>Q: {int_qsink:.1f} kW<br>COP: {int_cop:.2f}<extra></extra>'
-                                    ))
-                                
-                                # Add pinch line
-                                fig_hpi.add_hline(
-                                    y=pinch.pinchTemperature,
-                                    line_dash='dash',
-                                    line_color='gray',
-                                    annotation_text=f"Pinch: {pinch.pinchTemperature:.1f}°C",
-                                    annotation_position='top right'
-                                )
-                                
-                                # Add zero enthalpy line
-                                fig_hpi.add_vline(x=0, line_color='black', line_width=1, opacity=0.3)
-                                
-                                fig_hpi.update_layout(
-                                    title=dict(text='Heat Pump Integration - Grand Composite Curve', font=dict(size=14)),
-                                    xaxis_title='Net ΔH (kW)',
-                                    yaxis_title='Shifted Temperature (°C)',
-                                    height=400,
-                                    margin=dict(l=60, r=20, t=40, b=50),
-                                    hovermode='closest',
-                                    yaxis=dict(rangemode='tozero'),
-                                    showlegend=False
-                                )
-                                
-                                st.plotly_chart(fig_hpi, use_container_width=False, key="hpi_chart")
+                                    # Add pinch line
+                                    fig_hpi.add_hline(
+                                        y=pinch.pinchTemperature,
+                                        line_dash='dash',
+                                        line_color='gray',
+                                        annotation_text=f"Pinch: {pinch.pinchTemperature:.1f}°C",
+                                        annotation_position='top right'
+                                    )
+                                    
+                                    # Add zero enthalpy line
+                                    fig_hpi.add_vline(x=0, line_color='black', line_width=1, opacity=0.3)
+                                    
+                                    fig_hpi.update_layout(
+                                        title=dict(text='Heat Pump Integration - Grand Composite Curve', font=dict(size=14)),
+                                        xaxis_title='Net ΔH (kW)',
+                                        yaxis_title='Shifted Temperature (°C)',
+                                        height=400,
+                                        margin=dict(l=60, r=20, t=40, b=50),
+                                        hovermode='closest',
+                                        yaxis=dict(rangemode='tozero'),
+                                        showlegend=False
+                                    )
+                                    
+                                    st.plotly_chart(fig_hpi, use_container_width=True, key="hpi_chart")
                         else:
                             st.plotly_chart(fig_hpi, use_container_width=False, key="hpi_chart")
                             
