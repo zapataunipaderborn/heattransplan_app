@@ -17,6 +17,8 @@ if pinch_tool_path not in sys.path:
 # Import pinch analysis modules
 try:
     from Modules.Pinch.Pinch import Pinch
+    from Modules.HeatPumpIntegration.HeatPumpIntegration import HeatPumpIntegration as HPI
+    from Pinch_main import Pinchmain
     PINCH_AVAILABLE = True
     PINCH_IMPORT_ERROR = None
 except ImportError as e:
@@ -1915,6 +1917,153 @@ else:
                         )
                         
                         st.plotly_chart(fig_interval, width='stretch', key="interval_chart")
+                    
+                    st.markdown("---")
+                    st.markdown("#### Heat Pump Integration Analysis")
+                    
+                    try:
+                        # Create temporary CSV for HPI analysis (same as pinch analysis)
+                        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, newline='') as f:
+                            writer = csv.writer(f)
+                            writer.writerow(['Tmin', str(tmin)])
+                            writer.writerow(['CP', 'TSUPPLY', 'TTARGET'])
+                            for strm in streams_data:
+                                writer.writerow([strm['CP'], strm['Tin'], strm['Tout']])
+                            hpi_csv_path = f.name
+                        
+                        try:
+                            # Create Pinchmain instance
+                            pyPinchHPI = Pinchmain(hpi_csv_path, options={})
+                            
+                            # Create HPI instance (Tsinkout=None for iterative analysis)
+                            hpi_analysis = HPI(hpi_csv_path, Tsinkout=None, pyPinch=pyPinchHPI)
+                            
+                            # Run HPI analysis to get data (without plotting)
+                            hpi_analysis.GCCdraw = pyPinchHPI.solvePinchforHPI().grandCompositeCurve
+                            hpi_analysis.deleteTemperaturePockets()
+                            hpi_analysis.GCCSource, hpi_analysis.GCCSink = hpi_analysis.splitHotandCold()
+                            hpi_analysis.IntegrateHeatPump()
+                            hpi_analysis.findIntegration()
+                            
+                            # Get HPI data
+                            gcc_H = hpi_analysis.GCCdraw['H']
+                            gcc_T = hpi_analysis.GCCdraw['T']
+                            integration_point = hpi_analysis.IntegrationPoint
+                            
+                            # Create Plotly figure for HPI
+                            fig_hpi = go.Figure()
+                            
+                            # Plot GCC segments with colors (red for heating, blue for cooling)
+                            for i in range(len(gcc_H) - 1):
+                                # Determine color based on deltaH
+                                if i < len(hpi_analysis.pyPinch.heatCascade):
+                                    dh = hpi_analysis.pyPinch.heatCascade[i]['deltaH']
+                                    color = 'red' if dh > 0 else ('blue' if dh < 0 else 'gray')
+                                else:
+                                    color = 'gray'
+                                
+                                fig_hpi.add_trace(go.Scatter(
+                                    x=[gcc_H[i], gcc_H[i+1]],
+                                    y=[gcc_T[i], gcc_T[i+1]],
+                                    mode='lines+markers',
+                                    line=dict(color=color, width=2),
+                                    marker=dict(size=5),
+                                    showlegend=False,
+                                    hovertemplate='T: %{y:.1f}°C<br>H: %{x:.1f} kW<extra></extra>'
+                                ))
+                            
+                            # Add integration points (green markers with COP labels)
+                            if integration_point and len(integration_point['Temp']) > 0:
+                                # Get the integration point data
+                                int_temp = integration_point['Temp'][-1]  # Use last temperature
+                                int_qsource = integration_point['QQuelle'][-1]
+                                int_qsink = integration_point['QSenke'][-1]
+                                int_cop = integration_point['COP'][-1]
+                                
+                                # Add green markers for heat pump integration points
+                                fig_hpi.add_trace(go.Scatter(
+                                    x=[int_qsource],
+                                    y=[int_temp],
+                                    mode='markers',
+                                    marker=dict(size=12, color='green', symbol='circle', 
+                                              line=dict(width=2, color='darkgreen')),
+                                    name='Source',
+                                    hovertemplate=f'<b>Evaporator</b><br>T: {int_temp:.1f}°C<br>Q: {int_qsource:.1f} kW<br>COP: {int_cop:.2f}<extra></extra>'
+                                ))
+                                
+                                fig_hpi.add_trace(go.Scatter(
+                                    x=[int_qsink],
+                                    y=[hpi_analysis.Tsinkout],
+                                    mode='markers',
+                                    marker=dict(size=12, color='green', symbol='diamond',
+                                              line=dict(width=2, color='darkgreen')),
+                                    name='Sink',
+                                    hovertemplate=f'<b>Condenser</b><br>T: {hpi_analysis.Tsinkout:.1f}°C<br>Q: {int_qsink:.1f} kW<br>COP: {int_cop:.2f}<extra></extra>'
+                                ))
+                                
+                                # Add COP annotation
+                                mid_x = (int_qsource + int_qsink) / 2
+                                mid_y = (int_temp + hpi_analysis.Tsinkout) / 2
+                                fig_hpi.add_annotation(
+                                    x=mid_x, y=mid_y,
+                                    text=f'COP: {int_cop:.2f}',
+                                    showarrow=True,
+                                    arrowhead=2,
+                                    arrowsize=1,
+                                    arrowwidth=2,
+                                    arrowcolor='green',
+                                    bgcolor='lightgreen',
+                                    bordercolor='darkgreen',
+                                    borderwidth=2,
+                                    borderpad=4,
+                                    font=dict(size=11, color='darkgreen', family='Arial Black')
+                                )
+                            
+                            # Add pinch line
+                            fig_hpi.add_hline(
+                                y=pinch.pinchTemperature,
+                                line_dash='dash',
+                                line_color='gray',
+                                annotation_text=f"Pinch: {pinch.pinchTemperature:.1f}°C",
+                                annotation_position='top right'
+                            )
+                            
+                            # Add zero enthalpy line
+                            fig_hpi.add_vline(x=0, line_color='black', line_width=1, opacity=0.3)
+                            
+                            fig_hpi.update_layout(
+                                title=dict(text='Heat Pump Integration - Grand Composite Curve', font=dict(size=14)),
+                                xaxis_title='Net ΔH (kW)',
+                                yaxis_title='Shifted Temperature (°C)',
+                                height=400,
+                                margin=dict(l=60, r=20, t=40, b=50),
+                                hovermode='closest',
+                                yaxis=dict(rangemode='tozero'),
+                                legend=dict(
+                                    x=1.0,
+                                    y=1.0,
+                                    xanchor='right',
+                                    yanchor='top',
+                                    bgcolor='rgba(255, 255, 255, 0.8)',
+                                    bordercolor='lightgray',
+                                    borderwidth=1
+                                )
+                            )
+                            
+                            st.plotly_chart(fig_hpi, use_container_width=True, key="hpi_chart")
+                            
+                            # Show integration summary
+                            if integration_point and len(integration_point['Temp']) > 0:
+                                st.markdown(f"**Integration Point:** T_evap={int_temp:.1f}°C, T_cond={hpi_analysis.Tsinkout:.1f}°C, "
+                                          f"Q_evap={int_qsource:.1f} kW, Q_cond={int_qsink:.1f} kW, **COP={int_cop:.2f}**")
+                            
+                        finally:
+                            os.unlink(hpi_csv_path)
+                            
+                    except Exception as hpi_error:
+                        st.error(f"Error generating HPI analysis: {str(hpi_error)}")
+                        import traceback
+                        st.code(traceback.format_exc())
                 
             except Exception as e:
                 st.error(f"Error: {str(e)}")
