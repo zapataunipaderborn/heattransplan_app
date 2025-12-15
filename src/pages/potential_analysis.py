@@ -1866,32 +1866,47 @@ else:
                                         'reason': hp['reason']
                                     })
                             
-                            # Add dropdown for heat pump selection
-                            # Sort by COP descending and get highest COP pump as default
+                            # Add multiselect for heat pump selection
+                            # Sort by COP descending
                             available_hps_sorted = sorted(
                                 [hp for hp in all_hp_data if hp['available']], 
                                 key=lambda x: x['cop'], 
                                 reverse=True
                             )
                             available_hp_names = [hp['name'] for hp in available_hps_sorted]
-                            hp_col1, hp_col2 = st.columns([0.3, 0.7])
-                            with hp_col1:
-                                selected_hp = st.selectbox("Select Heat Pump Type:", available_hp_names, key="hp_type_selector")
-                            with hp_col2:
-                                # Show COP for selected heat pump
-                                selected_hp_data = next((hp for hp in all_hp_data if hp['name'] == selected_hp), None)
-                                if selected_hp_data and selected_hp_data['cop']:
-                                    st.metric("COP", f"{selected_hp_data['cop']:.2f}")
                             
-                            # Re-run integration with selected heat pump type for visualization
-                            hpi_analysis.KoWP = []
-                            hpi_analysis.EvWP = []
-                            hpi_analysis.COPwerte = []
-                            hpi_analysis.COPT = []
-                            hpi_analysis.IntegrateHeatPump_specific(selected_hp)
-                            hpi_analysis.findIntegration()
+                            # Select all by default
+                            selected_hps = st.multiselect(
+                                "Select Heat Pump Types to visualize:", 
+                                available_hp_names, 
+                                default=available_hp_names,
+                                key="hp_type_multiselect"
+                            )
+                            
+                            # Store integration data for each selected heat pump
+                            hp_integration_data = []
+                            for hp_name in selected_hps:
+                                # Re-run integration with this specific heat pump type
+                                hpi_analysis.KoWP = []
+                                hpi_analysis.EvWP = []
+                                hpi_analysis.COPwerte = []
+                                hpi_analysis.COPT = []
+                                hpi_analysis.IntegrateHeatPump_specific(hp_name)
+                                hpi_analysis.findIntegration()
+                                
+                                # Store the integration data
+                                if hpi_analysis.IntegrationPoint and len(hpi_analysis.IntegrationPoint['Temp']) > 0:
+                                    hp_integration_data.append({
+                                        'name': hp_name,
+                                        'int_temp': hpi_analysis.IntegrationPoint['Temp'][-1],
+                                        'int_qsource': hpi_analysis.IntegrationPoint['QQuelle'][-1],
+                                        'int_qsink': hpi_analysis.IntegrationPoint['QSenke'][-1],
+                                        'int_cop': hpi_analysis.IntegrationPoint['COP'][-1],
+                                        't_sink': hpi_analysis.Tsinkout
+                                    })
                         else:
-                            selected_hp = "Auto (Best COP)"
+                            selected_hps = []
+                            hp_integration_data = []
                         
                         # Get HPI data
                         gcc_H = hpi_analysis.GCCdraw['H']
@@ -1920,49 +1935,55 @@ else:
                                 hovertemplate='T: %{y:.1f}°C<br>H: %{x:.1f} kW<extra></extra>'
                             ))
                         
-                        # Add integration points (green markers with COP labels)
-                        if integration_point and len(integration_point['Temp']) > 0:
-                            # Get the integration point data
-                            int_temp = integration_point['Temp'][-1]  # Use last temperature
-                            int_qsource = integration_point['QQuelle'][-1]
-                            int_qsink = integration_point['QSenke'][-1]
-                            int_cop = integration_point['COP'][-1]
+                        # Define colors for different heat pumps
+                        hp_colors = ['#00CC96', '#AB63FA', '#FFA15A', '#19D3F3', '#FF6692', '#B6E880', '#FF97FF', '#FECB52']
+                        
+                        # Add integration points for each selected heat pump
+                        for idx, hp_data in enumerate(hp_integration_data):
+                            color = hp_colors[idx % len(hp_colors)]
+                            hp_name = hp_data['name']
+                            int_temp = hp_data['int_temp']
+                            int_qsource = hp_data['int_qsource']
+                            int_qsink = hp_data['int_qsink']
+                            int_cop = hp_data['int_cop']
+                            t_sink = hp_data['t_sink']
                             
-                            # Add diamond markers for heat pump integration points
-                            # Red diamond for source (evaporator)
+                            # Add diamond markers for source (evaporator)
                             fig_hpi.add_trace(go.Scatter(
                                 x=[int_qsource],
                                 y=[int_temp],
                                 mode='markers',
-                                marker=dict(size=12, color='red', symbol='diamond', 
-                                          line=dict(width=2, color='darkred')),
-                                name='Source',
-                                hovertemplate=f'<b>Source</b><br>T: {int_temp:.1f}°C<br>Q: {int_qsource:.1f} kW<br>COP: {int_cop:.2f}<extra></extra>'
+                                marker=dict(size=12, color=color, symbol='diamond', 
+                                          line=dict(width=2, color=color)),
+                                name=f'{hp_name} - Source',
+                                legendgroup=hp_name,
+                                hovertemplate=f'<b>{hp_name} - Source</b><br>T: {int_temp:.1f}°C<br>Q: {int_qsource:.1f} kW<br>COP: {int_cop:.2f}<extra></extra>'
                             ))
                             
-                            # Blue diamond for sink (condenser)
+                            # Add diamond markers for sink (condenser)
                             fig_hpi.add_trace(go.Scatter(
                                 x=[int_qsink],
-                                y=[hpi_analysis.Tsinkout],
+                                y=[t_sink],
                                 mode='markers',
-                                marker=dict(size=12, color='blue', symbol='diamond',
-                                          line=dict(width=2, color='darkblue')),
-                                name='Sink',
-                                hovertemplate=f'<b>Sink</b><br>T: {hpi_analysis.Tsinkout:.1f}°C<br>Q: {int_qsink:.1f} kW<br>COP: {int_cop:.2f}<extra></extra>'
+                                marker=dict(size=12, color=color, symbol='diamond-open',
+                                          line=dict(width=2, color=color)),
+                                name=f'{hp_name} - Sink',
+                                legendgroup=hp_name,
+                                hovertemplate=f'<b>{hp_name} - Sink</b><br>T: {t_sink:.1f}°C<br>Q: {int_qsink:.1f} kW<br>COP: {int_cop:.2f}<extra></extra>'
                             ))
                             
-                            # Add COP annotation (no arrow)
+                            # Add COP annotation
                             mid_x = (int_qsource + int_qsink) / 2
-                            mid_y = (int_temp + hpi_analysis.Tsinkout) / 2
+                            mid_y = (int_temp + t_sink) / 2
                             fig_hpi.add_annotation(
                                 x=mid_x, y=mid_y,
-                                text=f'COP: {int_cop:.2f}',
+                                text=f'{hp_name}<br>COP: {int_cop:.2f}',
                                 showarrow=False,
-                                bgcolor='lightgreen',
-                                bordercolor='darkgreen',
+                                bgcolor='rgba(255,255,255,0.8)',
+                                bordercolor=color,
                                 borderwidth=2,
                                 borderpad=4,
-                                font=dict(size=11, color='darkgreen', family='Arial Black')
+                                font=dict(size=10, color=color, family='Arial Black')
                             )
                         
                         # Add pinch line
