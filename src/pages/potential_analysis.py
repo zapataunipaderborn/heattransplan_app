@@ -887,6 +887,192 @@ def generate_report():
                         interval_plot_html = fig3.to_html(full_html=False, include_plotlyjs=False)
                     
                     # Build pinch analysis section HTML
+                    # =====================================================
+                    # HEAT PUMP INTEGRATION ANALYSIS FOR REPORT
+                    # =====================================================
+                    hpi_section_html = ""
+                    
+                    try:
+                        # Create temporary CSV for HPI analysis
+                        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, newline='') as f:
+                            writer = csv.writer(f)
+                            writer.writerow(['Tmin', str(tmin)])
+                            writer.writerow(['CP', 'TSUPPLY', 'TTARGET'])
+                            for strm in streams_data:
+                                writer.writerow([strm['CP'], strm['Tin'], strm['Tout']])
+                            hpi_csv_path = f.name
+                        
+                        try:
+                            # Create Pinchmain instance
+                            pyPinchHPI = Pinchmain(hpi_csv_path, options={})
+                            
+                            # Create HPI instance
+                            hpi_analysis = HPI(hpi_csv_path, Tsinkout=None, pyPinch=pyPinchHPI)
+                            
+                            # Run HPI analysis
+                            hpi_analysis.GCCdraw = pyPinchHPI.solvePinchforHPI().grandCompositeCurve
+                            hpi_analysis.deleteTemperaturePockets()
+                            hpi_analysis.GCCSource, hpi_analysis.GCCSink = hpi_analysis.splitHotandCold()
+                            
+                            # Check if HPI is possible
+                            if hpi_analysis.GCCSource['T'] and hpi_analysis.GCCSink['T']:
+                                # Run integration to get available heat pumps
+                                hpi_analysis.IntegrateHeatPump()
+                                hpi_analysis.findIntegration()
+                                
+                                # Get available heat pump types
+                                all_hp_data = []
+                                if hpi_analysis.IntegrationPoint and len(hpi_analysis.IntegrationPoint['Temp']) > 0:
+                                    int_temp = hpi_analysis.IntegrationPoint['Temp'][-1]
+                                    available_hps = hpi_analysis.get_available_heat_pumps(int_temp)
+                                    
+                                    total_hot_duty = sum(abs(s['Q']) for s in streams_data if s['Tin'] > s['Tout'])
+                                    
+                                    # Calculate integration for each available heat pump
+                                    for hp in available_hps:
+                                        if hp['available']:
+                                            hpi_analysis.KoWP = []
+                                            hpi_analysis.EvWP = []
+                                            hpi_analysis.COPwerte = []
+                                            hpi_analysis.COPT = []
+                                            hpi_analysis.IntegrateHeatPump_specific(hp['name'])
+                                            hpi_analysis.findIntegration()
+                                            
+                                            if hpi_analysis.IntegrationPoint and len(hpi_analysis.IntegrationPoint['Temp']) > 0:
+                                                hp_int_temp = hpi_analysis.IntegrationPoint['Temp'][-1]
+                                                hp_int_qsource = hpi_analysis.IntegrationPoint['QQuelle'][-1]
+                                                hp_int_qsink = hpi_analysis.IntegrationPoint['QSenke'][-1]
+                                                hp_int_cop = hpi_analysis.IntegrationPoint['COP'][-1]
+                                                
+                                                all_hp_data.append({
+                                                    'name': hp['name'],
+                                                    'cop': hp_int_cop,
+                                                    't_source': hp_int_temp,
+                                                    't_sink': hpi_analysis.Tsinkout,
+                                                    'q_source': hp_int_qsource,
+                                                    'q_sink': hp_int_qsink
+                                                })
+                                    
+                                    # Sort by COP descending
+                                    all_hp_data.sort(key=lambda x: x['cop'], reverse=True)
+                                    
+                                    if all_hp_data:
+                                        # Build heat pump comparison table
+                                        hp_table_html = """
+                                        <table class="streams-table">
+                                            <thead>
+                                                <tr><th>Heat Pump</th><th>COP</th><th>T_source (°C)</th><th>T_sink (°C)</th><th>Q_source (kW)</th><th>Q_sink (kW)</th></tr>
+                                            </thead>
+                                            <tbody>
+                                        """
+                                        for hp in all_hp_data:
+                                            hp_table_html += f"""
+                                                <tr>
+                                                    <td>{hp['name']}</td>
+                                                    <td>{hp['cop']:.2f}</td>
+                                                    <td>{hp['t_source']:.1f}</td>
+                                                    <td>{hp['t_sink']:.1f}</td>
+                                                    <td>{hp['q_source']:.1f}</td>
+                                                    <td>{hp['q_sink']:.1f}</td>
+                                                </tr>
+                                            """
+                                        hp_table_html += "</tbody></table>"
+                                        
+                                        # Generate HPI plot for top 3 heat pumps
+                                        gcc_H = hpi_analysis.GCCdraw['H']
+                                        gcc_T = hpi_analysis.GCCdraw['T']
+                                        hp_colors = ['#00CC96', '#AB63FA', '#FFA15A']
+                                        
+                                        # Create HPI figure
+                                        fig_hpi = go.Figure()
+                                        
+                                        # Plot GCC segments
+                                        for i in range(len(gcc_H) - 1):
+                                            if i < len(hpi_analysis.pyPinch.heatCascade):
+                                                dh = hpi_analysis.pyPinch.heatCascade[i]['deltaH']
+                                                color = 'red' if dh > 0 else ('blue' if dh < 0 else 'gray')
+                                            else:
+                                                color = 'gray'
+                                            
+                                            fig_hpi.add_trace(go.Scatter(
+                                                x=[gcc_H[i], gcc_H[i+1]],
+                                                y=[gcc_T[i], gcc_T[i+1]],
+                                                mode='lines+markers',
+                                                line=dict(color=color, width=2),
+                                                marker=dict(size=5),
+                                                showlegend=False
+                                            ))
+                                        
+                                        # Add integration points for top 3 heat pumps
+                                        for idx, hp_data in enumerate(all_hp_data[:3]):
+                                            # Re-run integration for this heat pump
+                                            hpi_analysis.KoWP = []
+                                            hpi_analysis.EvWP = []
+                                            hpi_analysis.COPwerte = []
+                                            hpi_analysis.COPT = []
+                                            hpi_analysis.IntegrateHeatPump_specific(hp_data['name'])
+                                            hpi_analysis.findIntegration()
+                                            
+                                            if hpi_analysis.IntegrationPoint and len(hpi_analysis.IntegrationPoint['Temp']) > 0:
+                                                color = hp_colors[idx % len(hp_colors)]
+                                                hp_name = hp_data['name']
+                                                int_temp = hpi_analysis.IntegrationPoint['Temp'][-1]
+                                                int_qsource = hpi_analysis.IntegrationPoint['QQuelle'][-1]
+                                                int_qsink = hpi_analysis.IntegrationPoint['QSenke'][-1]
+                                                t_sink = hpi_analysis.Tsinkout
+                                                
+                                                # Add source marker
+                                                fig_hpi.add_trace(go.Scatter(
+                                                    x=[int_qsource], y=[int_temp],
+                                                    mode='markers',
+                                                    marker=dict(size=14, color=color, symbol='diamond', 
+                                                              line=dict(width=2, color=color)),
+                                                    name=f'{hp_name} - Source',
+                                                    showlegend=True
+                                                ))
+                                                
+                                                # Add sink marker
+                                                fig_hpi.add_trace(go.Scatter(
+                                                    x=[int_qsink], y=[t_sink],
+                                                    mode='markers',
+                                                    marker=dict(size=14, color=color, symbol='diamond-open',
+                                                              line=dict(width=2, color=color)),
+                                                    name=f'{hp_name} - Sink',
+                                                    showlegend=True
+                                                ))
+                                        
+                                        # Add pinch line
+                                        fig_hpi.add_hline(y=pinch_obj.pinchTemperature, line_dash='dash', line_color='gray',
+                                                        annotation_text=f"Pinch: {pinch_obj.pinchTemperature:.1f}°C")
+                                        fig_hpi.add_vline(x=0, line_color='black', line_width=1, opacity=0.3)
+                                        
+                                        fig_hpi.update_layout(
+                                            title='Heat Pump Integration - Grand Composite Curve',
+                                            xaxis_title='Net ΔH (kW)',
+                                            yaxis_title='Shifted Temperature (°C)',
+                                            height=600, width=900,
+                                            yaxis=dict(rangemode='tozero')
+                                        )
+                                        
+                                        hpi_plot_html = fig_hpi.to_html(full_html=False, include_plotlyjs=False)
+                                        
+                                        hpi_section_html = f"""
+                                        <h3>Heat Pump Integration Analysis</h3>
+                                        <div class="hpi-layout">
+                                            <div class="hpi-table-section">
+                                                <h4>🔍 Heat Pump Comparison</h4>
+                                                {hp_table_html}
+                                            </div>
+                                            <div class="hpi-plot-section">
+                                                {hpi_plot_html}
+                                            </div>
+                                        </div>
+                                        """
+                        finally:
+                            os.unlink(hpi_csv_path)
+                    except Exception as hpi_error:
+                        hpi_section_html = f"<h3>Heat Pump Integration Analysis</h3><p><em>Heat pump integration could not be performed: {str(hpi_error)}</em></p>"
+                    
                     pinch_section_html = f"""
                     <h2>📊 Potential Analysis</h2>
                     
@@ -922,6 +1108,10 @@ def generate_report():
                             {gcc_plot_html}
                         </div>
                     </div>
+                    
+                    {hpi_section_html}
+                    
+                    <h3>Temperature Interval Diagram</h3>
                     <div class="plots-container">
                         <div class="plot-section">
                             {interval_plot_html}
@@ -1127,6 +1317,20 @@ def generate_report():
             border: 1px solid #ddd;
             border-radius: 4px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }}
+        .hpi-layout {{
+            display: flex;
+            gap: 20px;
+            margin: 30px 0;
+            align-items: flex-start;
+        }}
+        .hpi-table-section {{
+            flex: 0 0 35%;
+            min-width: 350px;
+        }}
+        .hpi-plot-section {{
+            flex: 1;
+            min-width: 0;
         }}
         @media print {{
             body {{
