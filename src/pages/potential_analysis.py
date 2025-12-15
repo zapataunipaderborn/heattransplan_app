@@ -1980,38 +1980,36 @@ else:
                                 int_qsink = integration_point['QSenke'][-1]
                                 int_cop = integration_point['COP'][-1]
                                 
-                                # Add green markers for heat pump integration points
+                                # Add diamond markers for heat pump integration points
+                                # Red diamond for source (evaporator)
                                 fig_hpi.add_trace(go.Scatter(
                                     x=[int_qsource],
                                     y=[int_temp],
                                     mode='markers',
-                                    marker=dict(size=12, color='green', symbol='circle', 
-                                              line=dict(width=2, color='darkgreen')),
+                                    marker=dict(size=12, color='red', symbol='diamond', 
+                                              line=dict(width=2, color='darkred')),
                                     name='Source',
-                                    hovertemplate=f'<b>Evaporator</b><br>T: {int_temp:.1f}°C<br>Q: {int_qsource:.1f} kW<br>COP: {int_cop:.2f}<extra></extra>'
+                                    hovertemplate=f'<b>Source</b><br>T: {int_temp:.1f}°C<br>Q: {int_qsource:.1f} kW<br>COP: {int_cop:.2f}<extra></extra>'
                                 ))
                                 
+                                # Blue diamond for sink (condenser)
                                 fig_hpi.add_trace(go.Scatter(
                                     x=[int_qsink],
                                     y=[hpi_analysis.Tsinkout],
                                     mode='markers',
-                                    marker=dict(size=12, color='green', symbol='diamond',
-                                              line=dict(width=2, color='darkgreen')),
+                                    marker=dict(size=12, color='blue', symbol='diamond',
+                                              line=dict(width=2, color='darkblue')),
                                     name='Sink',
-                                    hovertemplate=f'<b>Condenser</b><br>T: {hpi_analysis.Tsinkout:.1f}°C<br>Q: {int_qsink:.1f} kW<br>COP: {int_cop:.2f}<extra></extra>'
+                                    hovertemplate=f'<b>Sink</b><br>T: {hpi_analysis.Tsinkout:.1f}°C<br>Q: {int_qsink:.1f} kW<br>COP: {int_cop:.2f}<extra></extra>'
                                 ))
                                 
-                                # Add COP annotation
+                                # Add COP annotation (no arrow)
                                 mid_x = (int_qsource + int_qsink) / 2
                                 mid_y = (int_temp + hpi_analysis.Tsinkout) / 2
                                 fig_hpi.add_annotation(
                                     x=mid_x, y=mid_y,
                                     text=f'COP: {int_cop:.2f}',
-                                    showarrow=True,
-                                    arrowhead=2,
-                                    arrowsize=1,
-                                    arrowwidth=2,
-                                    arrowcolor='green',
+                                    showarrow=False,
                                     bgcolor='lightgreen',
                                     bordercolor='darkgreen',
                                     borderwidth=2,
