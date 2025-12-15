@@ -896,11 +896,11 @@ def generate_report():
                     <h3>Pinch Analysis Results (ΔTmin = {tmin}°C)</h3>
                     <div class="metrics-row">
                         <div class="metric-card hot">
-                            <div class="metric-label">Hot Utility</div>
+                            <div class="metric-label">Minimum Hot Utility</div>
                             <div class="metric-value">{results['hot_utility']:.2f} kW</div>
                         </div>
                         <div class="metric-card cold">
-                            <div class="metric-label">Cold Utility</div>
+                            <div class="metric-label">Minimum Cold Utility</div>
                             <div class="metric-value">{results['cold_utility']:.2f} kW</div>
                         </div>
                         <div class="metric-card pinch">
@@ -908,7 +908,7 @@ def generate_report():
                             <div class="metric-value">{results['pinch_temperature']:.1f} °C</div>
                         </div>
                         <div class="metric-card recovery">
-                            <div class="metric-label">Heat Recovery</div>
+                            <div class="metric-label">Heat Recovery Potential</div>
                             <div class="metric-value">{results['heat_recovery']:.2f} kW</div>
                         </div>
                     </div>
@@ -1615,10 +1615,10 @@ else:
                     'streams': list(pinch.streams)
                 }
                 
-                metric1.metric("Hot Utility", f"{results['hot_utility']:.2f} kW")
-                metric2.metric("Cold Utility", f"{results['cold_utility']:.2f} kW")
-                metric3.metric("Pinch Temp", f"{results['pinch_temperature']:.1f} °C")
-                metric4.metric("Heat Recovery", f"{results['heat_recovery']:.2f} kW")
+                metric1.metric("Minimum Hot Utility", f"{results['hot_utility']:.2f} kW")
+                metric2.metric("Minimum Cold Utility", f"{results['cold_utility']:.2f} kW")
+                metric3.metric("Pinch Temperature", f"{results['pinch_temperature']:.1f} °C")
+                metric4.metric("Heat Recovery Potential", f"{results['heat_recovery']:.2f} kW")
                 
                 # Side by side plots: Composite Curves (left) and Grand Composite Curve (right)
                 plot_col1, plot_col2 = st.columns(2)
@@ -1962,7 +1962,7 @@ else:
                                 selected_hps = st.multiselect(
                                     "Select Heat Pump Types to visualize:", 
                                     available_hp_names, 
-                                    default=available_hp_names,
+                                    default=[available_hp_names[0]] if available_hp_names else [],
                                     key="hp_type_multiselect"
                                 )
                                 
