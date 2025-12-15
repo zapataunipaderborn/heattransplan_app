@@ -446,8 +446,9 @@ def export_to_csv():
     # Write header
     writer.writerow([
         'Process', 'Subprocess', 'Process Latitude', 'Process Longitude', 'Process Hours',
-        'Next Connection', 'Stream', 'Stream Tin (°C)', 'Stream Tout (°C)', 
-        'Stream mdot', 'Stream cp',
+        'Next Connection', 'Stream', 'Stream Type', 'Stream Tin (°C)', 'Stream Tout (°C)', 
+        'Stream mdot', 'Stream cp', 'Stream CP', 'Stream Water Content In', 'Stream Water Content Out',
+        'Stream Density', 'Stream Pressure',
         'Product Tin', 'Product Tout', 'Product mdot', 'Product cp',
         'Air Tin', 'Air Tout', 'Air mdot', 'Air cp',
         'Water Content In', 'Water Content Out', 'Density', 'Pressure', 'Notes'
@@ -511,35 +512,24 @@ def export_to_csv():
                 stream_name = stream.get('name', f"Stream {stream_idx + 1}")
                 stream_type = stream.get('type', 'product')
                 
-                # Handle new stream structure with flexible properties
-                properties = stream.get('properties', [])
-                values = stream.get('values', [])
+                # Extract values from stream_values dict (new structure)
+                stream_values = stream.get('stream_values', {})
+                stream_tin = stream_values.get('Tin', '')
+                stream_tout = stream_values.get('Tout', '')
+                stream_mdot = stream_values.get('ṁ', '')
+                stream_cp = stream_values.get('cp', '')
+                stream_CP = stream_values.get('CP', '')
+                stream_water_in = stream_values.get('Water Content In', '')
+                stream_water_out = stream_values.get('Water Content Out', '')
+                stream_density = stream_values.get('Density', '')
+                stream_pressure = stream_values.get('Pressure', '')
                 
-                if properties and values and len(properties) == len(values):
-                    # New structure: create columns for each property-value pair
-                    prop_value_str = "; ".join([f"{prop}:{val}" for prop, val in zip(properties, values)])
-                    
-                    # Extract legacy fields for backward compatibility
-                    tin = ''
-                    tout = ''
-                    mdot = ''
-                    cp = ''
-                    for prop, val in zip(properties, values):
-                        if prop == 'Tin':
-                            tin = val
-                        elif prop == 'Tout':
-                            tout = val
-                        elif prop == 'ṁ':
-                            mdot = val
-                        elif prop == 'cp':
-                            cp = val
-                else:
-                    # Legacy structure: fallback to old fields
-                    tin = stream.get('temp_in', '')
-                    tout = stream.get('temp_out', '')
-                    mdot = stream.get('mdot', '')
-                    cp = stream.get('cp', '')
-                    prop_value_str = f"Tin:{tin}; Tout:{tout}; ṁ:{mdot}; cp:{cp}"
+                # Fallback to legacy fields if stream_values is empty
+                if not stream_values:
+                    stream_tin = stream.get('temp_in', '')
+                    stream_tout = stream.get('temp_out', '')
+                    stream_mdot = stream.get('mdot', '')
+                    stream_cp = stream.get('cp', '')
                 
                 writer.writerow([
                     process_name,
@@ -549,10 +539,16 @@ def export_to_csv():
                     process_hours,
                     next_connection,
                     stream_name,
-                    tin,
-                    tout,
-                    mdot,
-                    cp,
+                    stream_type,
+                    stream_tin,
+                    stream_tout,
+                    stream_mdot,
+                    stream_cp,
+                    stream_CP,
+                    stream_water_in,
+                    stream_water_out,
+                    stream_density,
+                    stream_pressure,
                     product_tin,
                     product_tout,
                     product_mdot,
@@ -577,10 +573,16 @@ def export_to_csv():
                 process_hours,
                 next_connection,
                 '',  # No stream
+                '',  # No stream type
                 '',  # No Stream Tin
                 '',  # No Stream Tout
                 '',  # No Stream mdot
                 '',  # No Stream cp
+                '',  # No Stream CP
+                '',  # No Stream Water Content In
+                '',  # No Stream Water Content Out
+                '',  # No Stream Density
+                '',  # No Stream Pressure
                 product_tin,
                 product_tout,
                 product_mdot,
