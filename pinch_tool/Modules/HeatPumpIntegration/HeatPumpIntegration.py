@@ -38,6 +38,66 @@ class HeatPumpIntegration():
             COPList.append((self.Tsinkout+273.15)/(self.Tsinkout-T)*0.5) # Carnot
             StringList.append('Carnot')
         return max(COPList),StringList[COPList.index(max(COPList))]
+    
+    def get_available_heat_pumps(self, T):
+        """Returns list of all heat pump types with their COPs and availability status"""
+        hp_list = []
+        delta_T = self.Tsinkout - T
+        
+        # Prototypical Stirling
+        if 144 <= self.Tsinkout <= 212 and 25 <= delta_T <= 190:
+            cop = 1.28792 * ((self.Tsinkout-(T)) + 2 * 0.54103)**(-0.37606) * (self.Tsinkout+273 + 0.54103)**0.35992
+            hp_list.append({'name': 'Prototypical Stirling', 'cop': cop, 'available': True, 'reason': ''})
+        else:
+            hp_list.append({'name': 'Prototypical Stirling', 'cop': None, 'available': False, 
+                          'reason': f'Requires: 144°C≤T_sink≤212°C, 25°C≤ΔT≤190°C (Current: T_sink={self.Tsinkout:.1f}°C, ΔT={delta_T:.1f}°C)'})
+        
+        # VHTHP (HFC/HFO)
+        if 80 <= self.Tsinkout <= 160 and 25 <= delta_T <= 95:
+            cop = 1.9118 * ((self.Tsinkout-(T)) + 2 * 0.04419)**(-0.89094) * (self.Tsinkout+273 + 0.04419)**0.67895
+            hp_list.append({'name': 'VHTHP (HFC/HFO)', 'cop': cop, 'available': True, 'reason': ''})
+        else:
+            hp_list.append({'name': 'VHTHP (HFC/HFO)', 'cop': None, 'available': False,
+                          'reason': f'Requires: 80°C≤T_sink≤160°C, 25°C≤ΔT≤95°C (Current: T_sink={self.Tsinkout:.1f}°C, ΔT={delta_T:.1f}°C)'})
+        
+        # SHP and HTHPs (HFC/HFO)
+        if 25 <= self.Tsinkout <= 100 and 10 <= delta_T <= 78:
+            cop = 1.4480*(10**12) * ((self.Tsinkout-(T)) + 2 * 88.73)**(-4.9469)
+            hp_list.append({'name': 'SHP and HTHPs (HFC/HFO)', 'cop': cop, 'available': True, 'reason': ''})
+        else:
+            hp_list.append({'name': 'SHP and HTHPs (HFC/HFO)', 'cop': None, 'available': False,
+                          'reason': f'Requires: 25°C≤T_sink≤100°C, 10°C≤ΔT≤78°C (Current: T_sink={self.Tsinkout:.1f}°C, ΔT={delta_T:.1f}°C)'})
+        
+        # SHP and HTHPs (R717)
+        if 70 <= self.Tsinkout <= 85 and 30 <= delta_T <= 75:
+            cop = 40.789 * ((self.Tsinkout-(T)) + 2 * 1.0305)**(-1.0489) * (self.Tsinkout+273 + 1.0305)**0.29998
+            hp_list.append({'name': 'SHP and HTHPs (R717)', 'cop': cop, 'available': True, 'reason': ''})
+        else:
+            hp_list.append({'name': 'SHP and HTHPs (R717)', 'cop': None, 'available': False,
+                          'reason': f'Requires: 70°C≤T_sink≤85°C, 30°C≤ΔT≤75°C (Current: T_sink={self.Tsinkout:.1f}°C, ΔT={delta_T:.1f}°C)'})
+        
+        # Carnot (always available)
+        cop_carnot = (self.Tsinkout+273.15)/(self.Tsinkout-T)*0.5
+        hp_list.append({'name': 'Carnot', 'cop': cop_carnot, 'available': True, 'reason': ''})
+        
+        return hp_list
+    
+    def COP_specific(self, T, hp_type):
+        """Calculate COP for a specific heat pump type"""
+        if hp_type == 'Prototypical Stirling':
+            if 144 <= self.Tsinkout <= 212 and 25 <= self.Tsinkout-T <= 190:
+                return 1.28792 * ((self.Tsinkout-(T)) + 2 * 0.54103)**(-0.37606) * (self.Tsinkout+273 + 0.54103)**0.35992
+        elif hp_type == 'VHTHP (HFC/HFO)':
+            if 80 <= self.Tsinkout <= 160 and 25 <= self.Tsinkout-T <= 95:
+                return 1.9118 * ((self.Tsinkout-(T)) + 2 * 0.04419)**(-0.89094) * (self.Tsinkout+273 + 0.04419)**0.67895
+        elif hp_type == 'SHP and HTHPs (HFC/HFO)':
+            if 25 <= self.Tsinkout <= 100 and 10 <= self.Tsinkout-T <= 78:
+                return 1.4480*(10**12) * ((self.Tsinkout-(T)) + 2 * 88.73)**(-4.9469)
+        elif hp_type == 'SHP and HTHPs (R717)':
+            if 70 <= self.Tsinkout <= 85 and 30 <= self.Tsinkout-T <= 75:
+                return 40.789 * ((self.Tsinkout-(T)) + 2 * 1.0305)**(-1.0489) * (self.Tsinkout+273 + 1.0305)**0.29998
+        # Fallback to Carnot
+        return (self.Tsinkout+273.15)/(self.Tsinkout-T)*0.5
         
     def deleteTemperaturePockets(self):
         self.pyPinch = self.pyPinch.PinchAnalyse
@@ -152,13 +212,13 @@ class HeatPumpIntegration():
             if QpunktKo >= self.QpunktKo(self.Tsinkout, KoQuelle) and self.Integrationtype == None and TSTest == 0:
                 if self.Tsinkout <= self.GCCSink['T'][0]:
                     T+=self.SchrittweiteTemp
-                    self.SchrittweiteTemp = self.SchrittweiteTemp/20
+                    self.SchrittweiteTemp = self.SchrittweiteTemp/200
                     TSTest = 1
                 else:
                     break
             if QpunktKo >= self.GCCSink['H'][0] and Test == 0:
                 T+=self.SchrittweiteTemp
-                self.SchrittweiteTemp = self.SchrittweiteTemp/20
+                self.SchrittweiteTemp = self.SchrittweiteTemp/200
                 Test = 1
             elif QpunktKo >= self.GCCSink['H'][0] and Test == 1:
                 break
@@ -194,7 +254,7 @@ class HeatPumpIntegration():
                 self.EvWP.append(round(QpunktEv))
                 self.KoWP.append(round(QpunktKo))
                 self.COPT.append(T)
-        self.COPRegression = COP[0]
+        self.COPRegression = COP[1]
         table = {'COP':self.COPwerte[::30],'QQuelle':self.EvWP[::30],'QSenke':self.KoWP[::30]}
         self.tableISSP = {'Temp': self.COPT, 'COP':self.COPwerte,'QQuelle':self.EvWP,'QSenke':self.KoWP}
         print(tabulate(table,headers='keys'))
@@ -218,7 +278,22 @@ class HeatPumpIntegration():
                 self.IntegrationPoint['QQuelle'].append(self.tableISSP['QQuelle'][-1])
                 #self.IntegrationPoint['QQuelle'].append(self.tableISSP['QQuelle'][self.tableISSP['Temp'].index(self.IntegrationPoint['Temp'][-1])])
                 self.IntegrationPoint['QSenke'].append(self.tableISSP['QSenke'][-1])
-                break                      
+                break
+    
+    def IntegrateHeatPump_specific(self, hp_type):
+        """Same as IntegrateHeatPump but uses specific heat pump type"""
+        self.selected_hp_type = hp_type
+        # Store original COP method
+        original_COP = self.COP
+        # Replace COP method temporarily
+        def COP_wrapper(T):
+            cop_val = self.COP_specific(T, hp_type)
+            return (cop_val, hp_type) if cop_val else original_COP(T)
+        self.COP = COP_wrapper
+        # Run integration
+        self.IntegrateHeatPump()
+        # Restore original method
+        self.COP = original_COP
 
     
     def solveforISSP(self):

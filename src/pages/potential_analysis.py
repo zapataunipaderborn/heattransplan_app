@@ -1942,8 +1942,40 @@ else:
                             hpi_analysis.GCCdraw = pyPinchHPI.solvePinchforHPI().grandCompositeCurve
                             hpi_analysis.deleteTemperaturePockets()
                             hpi_analysis.GCCSource, hpi_analysis.GCCSink = hpi_analysis.splitHotandCold()
+                            
+                            # First run to get available heat pumps
                             hpi_analysis.IntegrateHeatPump()
                             hpi_analysis.findIntegration()
+                            
+                            # Get available heat pump types at the integration point
+                            if hpi_analysis.IntegrationPoint and len(hpi_analysis.IntegrationPoint['Temp']) > 0:
+                                int_temp = hpi_analysis.IntegrationPoint['Temp'][-1]
+                                available_hps = hpi_analysis.get_available_heat_pumps(int_temp)
+                                
+                                # Separate available and unavailable heat pumps
+                                available_hp_names = [hp['name'] for hp in available_hps if hp['available']]
+                                unavailable_hps = [hp for hp in available_hps if not hp['available']]
+                                
+                                # Add dropdown for heat pump selection (only available ones)
+                                hp_col1, hp_col2 = st.columns([0.3, 0.7])
+                                with hp_col1:
+                                    selected_hp = st.selectbox("Select Heat Pump Type:", available_hp_names, key="hp_type_selector")
+                                with hp_col2:
+                                    # Show COP for selected heat pump
+                                    selected_hp_data = next((hp for hp in available_hps if hp['name'] == selected_hp), None)
+                                    if selected_hp_data and selected_hp_data['cop']:
+                                        st.metric("COP", f"{selected_hp_data['cop']:.2f}")
+                                
+                                # Re-run integration with selected heat pump type
+                                hpi_analysis.KoWP = []
+                                hpi_analysis.EvWP = []
+                                hpi_analysis.COPwerte = []
+                                hpi_analysis.COPT = []
+                                hpi_analysis.IntegrateHeatPump_specific(selected_hp)
+                                hpi_analysis.findIntegration()
+                            else:
+                                # No integration point found, use default
+                                selected_hp = "Auto (Best COP)"
                             
                             # Get HPI data
                             gcc_H = hpi_analysis.GCCdraw['H']
@@ -2050,10 +2082,25 @@ else:
                             
                             st.plotly_chart(fig_hpi, use_container_width=True, key="hpi_chart")
                             
-                            # Show integration summary
+                            # Show integration summary with selected heat pump type
                             if integration_point and len(integration_point['Temp']) > 0:
-                                st.markdown(f"**Integration Point:** T_evap={int_temp:.1f}°C, T_cond={hpi_analysis.Tsinkout:.1f}°C, "
-                                          f"Q_evap={int_qsource:.1f} kW, Q_cond={int_qsink:.1f} kW, **COP={int_cop:.2f}**")
+                                st.markdown(f"**Selected Heat Pump:** {selected_hp}")
+                                st.markdown(f"**Integration Point:** T_source={int_temp:.1f}°C, T_sink={hpi_analysis.Tsinkout:.1f}°C, "
+                                          f"Q_source={int_qsource:.1f} kW, Q_sink={int_qsink:.1f} kW, **COP={int_cop:.2f}**")
+                                
+                                # Show all heat pumps in an expandable section
+                                with st.expander("📊 View All Heat Pump Types"):
+                                    if available_hps:
+                                        hp_data = []
+                                        for hp in available_hps:
+                                            hp_data.append({
+                                                'Heat Pump Type': hp['name'],
+                                                'Status': '✓ Available' if hp['available'] else '✗ Not Suitable',
+                                                'COP': f"{hp['cop']:.2f}" if hp['cop'] else 'N/A',
+                                                'Selected': '✓' if hp['name'] == selected_hp else '',
+                                                'Note': hp['reason'] if not hp['available'] else ''
+                                            })
+                                        st.table(hp_data)
                             
                         finally:
                             os.unlink(hpi_csv_path)
