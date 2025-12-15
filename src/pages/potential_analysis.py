@@ -1941,10 +1941,10 @@ else:
                                 available_data.sort(key=lambda x: x['cop_value'], reverse=True)
                                 
                                 # Build HTML table with colored symbols (both filled and open diamonds)
-                                table_html = '<style>.hp-table{width:100%;border-collapse:collapse;font-size:12px;}.hp-table th{background-color:#f0f0f0;padding:8px;text-align:left;border:1px solid #ddd;font-weight:bold;}.hp-table td{padding:8px;border:1px solid #ddd;}.hp-table tr:nth-child(even){background-color:#f9f9f9;}.hp-symbol{font-size:24px;font-weight:bold;}</style><table class="hp-table"><thead><tr><th>Symbol</th><th>Heat Pump</th><th>COP</th><th>T_source (°C)</th><th>T_sink (°C)</th><th>Q_source (kW)</th><th>Q_sink (kW)</th></tr></thead><tbody>'
+                                table_html = '<style>.hp-table{width:100%;border-collapse:collapse;font-size:12px;}.hp-table th{background-color:#f0f0f0;padding:8px;text-align:left;border:1px solid #ddd;font-weight:bold;}.hp-table td{padding:8px;border:1px solid #ddd;}.hp-table tr:nth-child(even){background-color:#f9f9f9;}.hp-symbol{font-size:72px;font-weight:bold;line-height:1;}</style><table class="hp-table"><thead><tr><th>Heat Pump</th><th>COP</th><th>T_source (°C)</th><th>T_sink (°C)</th><th>Q_source (kW)</th><th>Q_sink (kW)</th><th>Symbol</th></tr></thead><tbody>'
                                 
                                 for item in available_data:
-                                    table_html += f'<tr><td class="hp-symbol" style="color: {item["color"]};">◆◇</td><td>{item["Heat Pump"]}</td><td>{item["COP"]}</td><td>{item["T_source (°C)"]}</td><td>{item["T_sink (°C)"]}</td><td>{item["Q_source (kW)"]}</td><td>{item["Q_sink (kW)"]}</td></tr>'
+                                    table_html += f'<tr><td>{item["Heat Pump"]}</td><td>{item["COP"]}</td><td>{item["T_source (°C)"]}</td><td>{item["T_sink (°C)"]}</td><td>{item["Q_source (kW)"]}</td><td>{item["Q_sink (kW)"]}</td><td class="hp-symbol" style="color: {item["color"]};">◆◇</td></tr>'
                                 
                                 table_html += '</tbody></table>'
                                 
@@ -2017,20 +2017,6 @@ else:
                                         legendgroup=hp_name,
                                         hovertemplate=f'<b>{hp_name} - Sink</b><br>T: {t_sink:.1f}°C<br>Q: {int_qsink:.1f} kW<br>COP: {int_cop:.2f}<extra></extra>'
                                     ))
-                                    
-                                    # Add COP annotation
-                                    mid_x = (int_qsource + int_qsink) / 2
-                                    mid_y = (int_temp + t_sink) / 2
-                                    fig_hpi.add_annotation(
-                                        x=mid_x, y=mid_y,
-                                        text=f'{hp_name}<br>COP: {int_cop:.2f}',
-                                        showarrow=False,
-                                        bgcolor='rgba(255,255,255,0.8)',
-                                        bordercolor=color,
-                                        borderwidth=2,
-                                        borderpad=4,
-                                        font=dict(size=10, color=color, family='Arial Black')
-                                    )
                                 
                                 # Add pinch line
                                 fig_hpi.add_hline(
