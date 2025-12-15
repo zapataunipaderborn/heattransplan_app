@@ -1949,6 +1949,13 @@ else:
                                 table_html += '</tbody></table>'
                                 
                                 st.markdown(table_html, unsafe_allow_html=True)
+                                
+                                # Show reasons for unavailable heat pumps
+                                unavailable_reasons = [hp for hp in all_hp_data if not hp['available']]
+                                if unavailable_reasons:
+                                    with st.expander("ℹ️ Heat pumps that cannot be integrated"):
+                                        for hp in unavailable_reasons:
+                                            st.markdown(f"**{hp['name']}**: {hp['reason']}")
                             
                             with hpi_col2:
                                 # Add multiselect for heat pump selection
