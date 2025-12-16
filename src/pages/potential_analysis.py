@@ -1074,7 +1074,7 @@ def generate_report():
                 
                 stream_type = None
                 if tin is not None and tout is not None:
-                    stream_type = "HOT" if tin > tout else "COLD"
+                    stream_type = "Hot stream (Heat source)" if tin > tout else "Cold stream (Heat sink)"
                 
                 CP_flow = CP_direct if CP_direct is not None else (mdot * cp_val if mdot and cp_val else None)
                 Q = abs(CP_flow * (tout - tin)) if CP_flow and tin is not None and tout is not None else None
@@ -1124,7 +1124,7 @@ def generate_report():
                                 
                                 # Show Q if available
                                 q_display = f"{info['Q']:.2f} kW" if info['Q'] is not None else "N/A"
-                                type_display = "Hot stream (Heat Source)" if info['type'] == "HOT" else ("Cold Stream (Heat Sink)" if info['type'] == "COLD" else (info['type'] if info['type'] else "N/A"))
+                                type_display = "Hot stream (Heat Source)" if info['type'] == "Hot stream (Heat source)" else ("Cold Stream (Heat Sink)" if info['type'] == "Cold stream (Heat sink)" else (info['type'] if info['type'] else "N/A"))
                                 
                                 stream_list_html += f"""
                                 <div class="stream-item {selected_class}">
@@ -2143,9 +2143,9 @@ else:
         stream_type = None
         if tin is not None and tout is not None:
             if tin > tout:
-                stream_type = "HOT"
+                stream_type = "Hot stream (Heat source)"
             else:
-                stream_type = "COLD"
+                stream_type = "Cold stream (Heat sink)"
         
         # Determine CP: use direct CP if provided, otherwise calculate from mdot * cp
         CP_flow = None
@@ -2212,7 +2212,7 @@ else:
                         display_parts.append(f"Q:{info['Q']:.2f} kW")
                     
                     if info['type']:
-                        type_color = "🔴" if info['type'] == "HOT" else "🔵"
+                        type_color = "🔴" if info['type'] == "Hot stream (Heat source)" else "🔵"
                         display_parts.append(f"{type_color} {info['type']}")
                     
                     if display_parts:
@@ -2505,13 +2505,13 @@ else:
                             actual_t = t
                         matching = [s['name'] for s in hot_streams if min(s['Tin'], s['Tout']) <= actual_t <= max(s['Tin'], s['Tout'])]
                         stream_info = '<br>'.join(matching) if matching else 'Composite'
-                        label = f"<b>Hot stream (Heat Source) {curve_label}</b>" if curve_label else "<b>Hot stream (Heat Source) Composite</b>"
+                        label = f"<b>Hot stream (Heat Source) {curve_label}</b>" if curve_label else "<b>Hot streams (Heat sources) Composite</b>"
                         hot_hover.append(f"{label}<br>T: {t:.1f}°C<br>H: {h:.1f} kW<br>Streams: {stream_info}")
                     
                     fig1.add_trace(go.Scatter(
                         x=hot_H, y=hot_T,
                         mode='lines+markers',
-                        name='Hot stream (Heat Source)',
+                        name='Hot streams (Heat sources)',
                         line=dict(color='red', width=2),
                         marker=dict(size=6),
                         hovertemplate='%{text}<extra></extra>',
@@ -2531,13 +2531,13 @@ else:
                             actual_t = t
                         matching = [s['name'] for s in cold_streams if min(s['Tin'], s['Tout']) <= actual_t <= max(s['Tin'], s['Tout'])]
                         stream_info = '<br>'.join(matching) if matching else 'Composite'
-                        label = f"<b>Cold Stream (Heat Sink) {curve_label}</b>" if curve_label else "<b>Cold Stream (Heat Sink) Composite</b>"
+                        label = f"<b>Cold streams (Heat sinks) {curve_label}</b>" if curve_label else "<b>Cold streams (Heat sinks) Composite</b>"
                         cold_hover.append(f"{label}<br>T: {t:.1f}°C<br>H: {h:.1f} kW<br>Streams: {stream_info}")
                     
                     fig1.add_trace(go.Scatter(
                         x=cold_H, y=cold_T,
                         mode='lines+markers',
-                        name='Cold Stream (Heat Sink)',
+                        name='Cold streams (Heat sinks)',
                         line=dict(color='blue', width=2),
                         marker=dict(size=6),
                         hovertemplate='%{text}<extra></extra>',
