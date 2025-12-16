@@ -382,6 +382,10 @@ def load_app_state(state_json):
         st.session_state['proc_group_names'] = state.get('proc_group_names', [])
         st.session_state['proc_group_expanded'] = state.get('proc_group_expanded', [])
         
+        # Initialize map expansion states
+        st.session_state['process_subprocess_map_expanded'] = state.get('process_subprocess_map_expanded', {})
+        st.session_state['subprocess_map_expanded'] = state.get('subprocess_map_expanded', {})
+        
         # Convert proc_group_coordinates keys to integers (JSON converts them to strings)
         raw_coords = state.get('proc_group_coordinates', {})
         converted_coords = {}
@@ -731,6 +735,9 @@ if 'ui_status_msg' not in st.session_state: st.session_state['ui_status_msg'] = 
 if 'analyze_base_layer' not in st.session_state: st.session_state['analyze_base_layer'] = 'OpenStreetMap'
 # Group coordinates storage
 if 'proc_group_coordinates' not in st.session_state: st.session_state['proc_group_coordinates'] = {}
+# Map expansion states for subprocess views
+if 'process_subprocess_map_expanded' not in st.session_state: st.session_state['process_subprocess_map_expanded'] = {}
+if 'subprocess_map_expanded' not in st.session_state: st.session_state['subprocess_map_expanded'] = {}
 # Unified persistent base layer selection (only changed by user interaction)
 if 'current_base' not in st.session_state:
     st.session_state['current_base'] = 'OpenStreetMap'
