@@ -2216,6 +2216,77 @@ div.leaflet-container {background: #f2f2f3 !important;}
                                     draw.text((ct_x, ct_y), group_label, fill=text_color, font=font)
                                 else:
                                     draw.text((ct_x, ct_y), group_label, fill=text_color)
+                                
+                                # Draw stream circles above the process box
+                                # Aggregate all streams from all subprocesses in this process group
+                                group_subprocess_list = st.session_state.get('proc_groups', [])[group_idx] if group_idx < len(st.session_state.get('proc_groups', [])) else []
+                                all_streams = []
+                                for sub_idx in group_subprocess_list:
+                                    if sub_idx < len(st.session_state.get('processes', [])):
+                                        subprocess = st.session_state['processes'][sub_idx]
+                                        all_streams.extend(subprocess.get('streams', []))
+                                
+                                if all_streams:
+                                    # Calculate Q for each stream and draw circles above the box
+                                    circle_y = y0 - 35  # Position circles above the box (more space)
+                                    circle_spacing = 28  # Horizontal spacing between circles (more space)
+                                    base_radius = 8  # Base radius for circles (larger)
+                                    
+                                    # Calculate total width needed for all circles
+                                    total_width = len(all_streams) * circle_spacing
+                                    start_x = int((x0 + x1) / 2 - total_width / 2 + circle_spacing / 2)
+                                    
+                                    for stream_idx, stream in enumerate(all_streams):
+                                        # Calculate Q (heat power) for this stream
+                                        sv = stream.get('stream_values', {})
+                                        tin = sv.get('Tin', '') or stream.get('temp_in', '')
+                                        tout = sv.get('Tout', '') or stream.get('temp_out', '')
+                                        mdot = sv.get('ṁ', '') or stream.get('mdot', '')
+                                        cp_val = sv.get('cp', '') or stream.get('cp', '')
+                                        
+                                        Q = 0
+                                        try:
+                                            if tin and tout and mdot and cp_val:
+                                                tin_f = float(tin)
+                                                tout_f = float(tout)
+                                                mdot_f = float(mdot)
+                                                cp_f = float(cp_val)
+                                                Q = mdot_f * cp_f * abs(tout_f - tin_f)
+                                        except (ValueError, TypeError):
+                                            Q = 0
+                                        
+                                        # Determine circle size based on Q (scale logarithmically with more aggressive scaling)
+                                        if Q > 0:
+                                            import math as _m
+                                            # More aggressive scaling: Q from 1-10000 kW maps to radius 8-24px
+                                            radius = base_radius + min(16, int(_m.log10(Q + 1) * 3.5))
+                                        else:
+                                            radius = base_radius
+                                        
+                                        # Determine color based on stream type (hot = red, cold = blue)
+                                        try:
+                                            if tin and tout:
+                                                tin_f = float(tin)
+                                                tout_f = float(tout)
+                                                if tin_f > tout_f:
+                                                    # Hot stream (cooling)
+                                                    circle_color = (255, 100, 100, 220)  # Red
+                                                else:
+                                                    # Cold stream (heating)
+                                                    circle_color = (100, 150, 255, 220)  # Blue
+                                            else:
+                                                circle_color = (150, 150, 150, 200)  # Grey for unknown
+                                        except (ValueError, TypeError):
+                                            circle_color = (150, 150, 150, 200)  # Grey for invalid data
+                                        
+                                        # Draw circle
+                                        circle_x = start_x + stream_idx * circle_spacing
+                                        draw.ellipse(
+                                            [circle_x - radius, circle_y - radius, circle_x + radius, circle_y + radius],
+                                            fill=circle_color,
+                                            outline=(50, 50, 50, 255),
+                                            width=1
+                                        )
                                     
                             except (ValueError, TypeError):
                                 continue
@@ -2618,6 +2689,74 @@ div.leaflet-container {background: #f2f2f3 !important;}
                         draw.text((ct_x, ct_y), label, fill=text_color, font=font)
                     else:
                         draw.text((ct_x, ct_y), label, fill=text_color)
+                    
+                    # Draw stream circles above the box (only for subprocesses)
+                    if item_type == 'subprocess':
+                        subprocess_idx = item['idx']
+                        subprocess = st.session_state['processes'][subprocess_idx]
+                        streams = subprocess.get('streams', [])
+                        
+                        if streams:
+                            # Calculate Q for each stream and draw circles above the box
+                            circle_y = y0 - 35  # Position circles above the box (more space)
+                            circle_spacing = 28  # Horizontal spacing between circles (more space)
+                            base_radius = 8  # Base radius for circles (larger)
+                            
+                            # Calculate total width needed for all circles
+                            total_width = len(streams) * circle_spacing
+                            start_x = int((x0 + x1) / 2 - total_width / 2 + circle_spacing / 2)
+                            
+                            for stream_idx, stream in enumerate(streams):
+                                # Calculate Q (heat power) for this stream
+                                sv = stream.get('stream_values', {})
+                                tin = sv.get('Tin', '') or stream.get('temp_in', '')
+                                tout = sv.get('Tout', '') or stream.get('temp_out', '')
+                                mdot = sv.get('ṁ', '') or stream.get('mdot', '')
+                                cp_val = sv.get('cp', '') or stream.get('cp', '')
+                                
+                                Q = 0
+                                try:
+                                    if tin and tout and mdot and cp_val:
+                                        tin_f = float(tin)
+                                        tout_f = float(tout)
+                                        mdot_f = float(mdot)
+                                        cp_f = float(cp_val)
+                                        Q = mdot_f * cp_f * abs(tout_f - tin_f)
+                                except (ValueError, TypeError):
+                                    Q = 0
+                                
+                                # Determine circle size based on Q (scale logarithmically with more aggressive scaling)
+                                if Q > 0:
+                                    import math as _m
+                                    # More aggressive scaling: Q from 1-10000 kW maps to radius 8-24px
+                                    radius = base_radius + min(16, int(_m.log10(Q + 1) * 3.5))
+                                else:
+                                    radius = base_radius
+                                
+                                # Determine color based on stream type (hot = red, cold = blue)
+                                try:
+                                    if tin and tout:
+                                        tin_f = float(tin)
+                                        tout_f = float(tout)
+                                        if tin_f > tout_f:
+                                            # Hot stream (cooling)
+                                            circle_color = (255, 100, 100, 220)  # Red
+                                        else:
+                                            # Cold stream (heating)
+                                            circle_color = (100, 150, 255, 220)  # Blue
+                                    else:
+                                        circle_color = (150, 150, 150, 200)  # Grey for unknown
+                                except (ValueError, TypeError):
+                                    circle_color = (150, 150, 150, 200)  # Grey for invalid data
+                                
+                                # Draw circle
+                                circle_x = start_x + stream_idx * circle_spacing
+                                draw.ellipse(
+                                    [circle_x - radius, circle_y - radius, circle_x + radius, circle_y + radius],
+                                    fill=circle_color,
+                                    outline=(50, 50, 50, 255),
+                                    width=1
+                                )
 
                 # Draw all product stream labels on connections (after boxes so they appear on top)
                 for conn in connection_product_streams:
