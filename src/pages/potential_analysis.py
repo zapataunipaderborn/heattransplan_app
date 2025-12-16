@@ -166,8 +166,12 @@ def generate_process_level_map():
     
     return base_img
 
-def generate_subprocess_level_map():
-    """Generate a map image showing subprocesses with all connections, energy data, colors, arrows - exactly like data_collection.py"""
+def generate_subprocess_level_map(group_idx=None):
+    """Generate a map image showing subprocesses with all connections, energy data, colors, arrows.
+    
+    Args:
+        group_idx: If provided, only show subprocesses from this process group. If None, show all.
+    """
     import math
     
     snapshots_dict = st.session_state.get('map_snapshots', {})
@@ -179,7 +183,9 @@ def generate_subprocess_level_map():
         chosen_bytes = snapshots_dict.get(active_base) or st.session_state.get('map_snapshot')
         if not chosen_bytes:
             return None
-        base_img = Image.open(BytesIO(chosen_bytes)).convert("RGBA")
+        # Create a fresh copy of the base image to avoid modifying cached version
+        original_img = Image.open(BytesIO(chosen_bytes)).convert("RGBA")
+        base_img = original_img.copy()
     
     w, h = base_img.size
     draw = ImageDraw.Draw(base_img)
@@ -234,34 +240,66 @@ def generate_subprocess_level_map():
                  width=1)
     
     # Add process area label
-    if proc_group_names:
+    if proc_group_names and group_idx is not None and group_idx < len(proc_group_names):
+        overlay_label = f"Process Area: {proc_group_names[group_idx]}"
+    elif proc_group_names:
         overlay_label = f"Process Area: {proc_group_names[0]}" if len(proc_group_names) == 1 else "Subprocess View"
-        if font:
-            label_bbox = draw.textbbox((0, 0), overlay_label, font=font)
-            label_w = label_bbox[2] - label_bbox[0]
-            label_h = label_bbox[3] - label_bbox[1]
-        else:
-            label_w = len(overlay_label) * 6
-            label_h = 10
-        
-        label_x = overlay_x0 + 15
-        label_y = overlay_y0 + 15
-        
-        draw.rectangle([label_x-5, label_y-3, label_x+label_w+5, label_y+label_h+3], 
-                     fill=(255, 255, 255, 120), 
-                     outline=(220, 220, 220, 100), 
-                     width=1)
-        
-        if font:
-            draw.text((label_x, label_y), overlay_label, fill=(40, 40, 40, 255), font=font)
-        else:
-            draw.text((label_x, label_y), overlay_label, fill=(40, 40, 40, 255))
+    else:
+        overlay_label = "Subprocess View"
     
-    # Collect all positioned subprocesses (show ALL, not just expanded ones)
+    if font:
+        label_bbox = draw.textbbox((0, 0), overlay_label, font=font)
+        label_w = label_bbox[2] - label_bbox[0]
+        label_h = label_bbox[3] - label_bbox[1]
+    else:
+        label_w = len(overlay_label) * 6
+        label_h = 10
+    
+    label_x = overlay_x0 + 15
+    label_y = overlay_y0 + 15
+    
+    draw.rectangle([label_x-5, label_y-3, label_x+label_w+5, label_y+label_h+3], 
+                 fill=(255, 255, 255, 120), 
+                 outline=(220, 220, 220, 100), 
+                 width=1)
+    
+    if font:
+        draw.text((label_x, label_y), overlay_label, fill=(40, 40, 40, 255), font=font)
+    else:
+        draw.text((label_x, label_y), overlay_label, fill=(40, 40, 40, 255))
+    
+    # Filter processes by group if specified
+    if group_idx is not None:
+        proc_groups_list = st.session_state.get('proc_groups', [])
+        if group_idx < len(proc_groups_list):
+            subprocess_indices = set(proc_groups_list[group_idx])  # Convert to set for fast lookup
+            print(f"DEBUG: Generating subprocess map for group {group_idx}")
+            print(f"  subprocess_indices (set): {subprocess_indices}")
+            print(f"  proc_groups_list: {proc_groups_list}")
+        else:
+            subprocess_indices = set()
+            print(f"DEBUG: Group {group_idx} is out of bounds, no subprocesses")
+    else:
+        subprocess_indices = set(range(len(processes)))
+        print(f"DEBUG: Generating subprocess map for all processes: {subprocess_indices}")
+    
+    # Collect positioned subprocesses (filtered by group if specified)
     positioned = []
     name_index = {}
+    skipped_count = 0
+    included_count = 0
+    
+    print(f"  Starting subprocess iteration, total processes: {len(processes)}")
     
     for i, p in enumerate(processes):
+        # Skip if filtering by group and this subprocess is not in the group
+        if group_idx is not None and i not in subprocess_indices:
+            print(f"    Process {i} ({p.get('name', 'unnamed')}): SKIPPED (not in group {group_idx})")
+            skipped_count += 1
+            continue
+        
+        print(f"    Process {i} ({p.get('name', 'unnamed')}): INCLUDED in group {group_idx}")
+        included_count += 1
         lat = p.get('lat')
         lon = p.get('lon')
         if lat in (None, "", "None") or lon in (None, "", "None"):
@@ -613,6 +651,10 @@ def generate_subprocess_level_map():
             _label_centered(top_text, sx, inbound_top - 6, above=True)
             _label_centered(bot_text, sx, outbound_bottom + 6, above=False)
     
+    print(f"DEBUG: Subprocess map for group {group_idx} complete.")
+    print(f"  - Total processes in session: {len(processes)}")
+    print(f"  - Skipped: {skipped_count}, Included: {included_count}")
+    print(f"  - Positioned (drawable): {len(positioned)}")
     return base_img
 
 def generate_report():
@@ -632,24 +674,92 @@ def generate_report():
     except Exception:
         pass
     
-    # Generate maps as base64 images
-    process_map = generate_process_level_map()
-    subprocess_map = generate_subprocess_level_map()
+    # Generate process-level maps for both OpenStreetMap and Satellite
+    # Temporarily save current base to restore later
+    original_base = st.session_state.get('current_base', 'OpenStreetMap')
     
-    process_map_b64 = ""
-    subprocess_map_b64 = ""
+    process_map_osm_b64 = ""
+    process_map_satellite_b64 = ""
     
-    if process_map:
+    # Generate OpenStreetMap version
+    st.session_state['current_base'] = 'OpenStreetMap'
+    process_map_osm = generate_process_level_map()
+    if process_map_osm:
         img_buffer = BytesIO()
-        process_map.save(img_buffer, format='PNG')
+        process_map_osm.save(img_buffer, format='PNG')
         img_buffer.seek(0)
-        process_map_b64 = base64.b64encode(img_buffer.getvalue()).decode('utf-8')
+        process_map_osm_b64 = base64.b64encode(img_buffer.getvalue()).decode('utf-8')
     
-    if subprocess_map:
-        img_buffer2 = BytesIO()
-        subprocess_map.save(img_buffer2, format='PNG')
-        img_buffer2.seek(0)
-        subprocess_map_b64 = base64.b64encode(img_buffer2.getvalue()).decode('utf-8')
+    # Generate Satellite version
+    st.session_state['current_base'] = 'Satellite'
+    process_map_satellite = generate_process_level_map()
+    if process_map_satellite:
+        img_buffer = BytesIO()
+        process_map_satellite.save(img_buffer, format='PNG')
+        img_buffer.seek(0)
+        process_map_satellite_b64 = base64.b64encode(img_buffer.getvalue()).decode('utf-8')
+    
+    # Restore original base BEFORE generating subprocess maps
+    st.session_state['current_base'] = original_base
+    
+    # Generate subprocess maps for each process group
+    proc_groups = st.session_state.get('proc_groups', [])
+    proc_group_names = st.session_state.get('proc_group_names', [])
+    subprocess_maps_b64 = []
+    
+    print(f"\n=== STARTING SUBPROCESS MAP GENERATION ===")
+    print(f"Total process groups: {len(proc_groups)}")
+    print(f"Process groups structure: {proc_groups}")
+    print(f"Process group names: {proc_group_names}")
+    
+    # CRITICAL CHECK: Verify groups contain different subprocesses
+    all_subprocess_indices = []
+    for g_idx, g_subprocs in enumerate(proc_groups):
+        all_subprocess_indices.extend(g_subprocs)
+        print(f"  Group {g_idx} ('{proc_group_names[g_idx] if g_idx < len(proc_group_names) else 'unnamed'}'): subprocesses {g_subprocs}")
+    
+    if len(all_subprocess_indices) != len(set(all_subprocess_indices)):
+        print(f"WARNING: Some subprocesses appear in multiple groups! This will cause duplicate maps.")
+        print(f"All subprocess indices: {all_subprocess_indices}")
+        print(f"Unique subprocess indices: {set(all_subprocess_indices)}")
+    
+    for group_idx in range(len(proc_groups)):
+        if len(proc_groups[group_idx]) > 0:  # Only generate if group has subprocesses
+            print(f"\n--- Generating map for group {group_idx} ('{proc_group_names[group_idx] if group_idx < len(proc_group_names) else 'unnamed'}') ---")
+            print(f"Subprocesses that SHOULD appear in this map: {proc_groups[group_idx]}")
+            
+            # Generate unique map for this specific group - force fresh generation
+            subprocess_map = generate_subprocess_level_map(group_idx=group_idx)
+            if subprocess_map:
+                # Create a fresh buffer for each map
+                img_buffer = BytesIO()
+                subprocess_map.save(img_buffer, format='PNG')
+                img_buffer.seek(0)
+                img_data = img_buffer.getvalue()
+                map_b64 = base64.b64encode(img_data).decode('utf-8')
+                img_buffer.close()  # Ensure buffer is closed
+                
+                # Debug: Print first 50 chars of base64 to verify uniqueness
+                print(f"Group {group_idx} map encoded: {len(map_b64)} chars, starts with: {map_b64[:50]}")
+                
+                group_name = proc_group_names[group_idx] if group_idx < len(proc_group_names) else f"Process {group_idx + 1}"
+                subprocess_maps_b64.append({
+                    'name': group_name, 
+                    'image': map_b64, 
+                    'group_idx': group_idx,
+                    'subprocess_count': len(proc_groups[group_idx])
+                })
+                print(f"Added map for '{group_name}' to list (index {len(subprocess_maps_b64)-1})")
+            else:
+                print(f"WARNING: No map generated for group {group_idx}")
+    
+    print(f"\n=== SUBPROCESS MAP GENERATION COMPLETE ===")
+    print(f"Total maps generated: {len(subprocess_maps_b64)}")
+    for idx, m in enumerate(subprocess_maps_b64):
+        print(f"  Map {idx}: {m['name']} (group {m['group_idx']}, {m['subprocess_count']} subprocesses)")
+    
+    # Legacy single subprocess map for backward compatibility
+    subprocess_map_b64 = subprocess_maps_b64[0]['image'] if subprocess_maps_b64 else ""
     
     # Get notes
     project_notes = st.session_state.get('project_notes', '')
@@ -660,6 +770,107 @@ def generate_report():
                 notes_html += f"<p>{para}</p>\n"
     else:
         notes_html = "<p><em>No notes recorded.</em></p>"
+    
+    # Build data collection table
+    processes = st.session_state.get('processes', [])
+    proc_group_names = st.session_state.get('proc_group_names', [])
+    proc_groups = st.session_state.get('proc_groups', [])
+    
+    # Create mapping of subprocess to process
+    subprocess_to_process = {}
+    for group_idx, group_subprocess_list in enumerate(proc_groups):
+        for subprocess_idx in group_subprocess_list:
+            subprocess_to_process[subprocess_idx] = group_idx
+    
+    data_table_html = """
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Process</th>
+                <th>Subprocess</th>
+                <th>Stream</th>
+                <th>Type</th>
+                <th>Tin (°C)</th>
+                <th>Tout (°C)</th>
+                <th>ṁ</th>
+                <th>cp</th>
+                <th>CP</th>
+                <th>Water In</th>
+                <th>Water Out</th>
+                <th>Density</th>
+                <th>Pressure</th>
+            </tr>
+        </thead>
+        <tbody>
+    """
+    
+    for subprocess_idx, subprocess in enumerate(processes):
+        # Get process name
+        process_idx = subprocess_to_process.get(subprocess_idx)
+        if process_idx is not None and process_idx < len(proc_group_names):
+            process_name = proc_group_names[process_idx]
+        else:
+            process_name = "Unknown"
+        
+        subprocess_name = subprocess.get('name', f'Subprocess {subprocess_idx + 1}')
+        
+        # Get streams
+        streams = subprocess.get('streams', [])
+        if streams:
+            for stream_idx, stream in enumerate(streams):
+                stream_name = stream.get('name', f'Stream {stream_idx + 1}')
+                stream_type = stream.get('type', 'product')
+                
+                # Get stream values
+                stream_values = stream.get('stream_values', {})
+                tin = stream_values.get('Tin', '')
+                tout = stream_values.get('Tout', '')
+                mdot = stream_values.get('ṁ', '')
+                cp_val = stream_values.get('cp', '')
+                CP = stream_values.get('CP', '')
+                water_in = stream_values.get('Water Content In', '')
+                water_out = stream_values.get('Water Content Out', '')
+                density = stream_values.get('Density', '')
+                pressure = stream_values.get('Pressure', '')
+                
+                # Fallback to legacy fields if stream_values is empty
+                if not stream_values:
+                    tin = stream.get('temp_in', '')
+                    tout = stream.get('temp_out', '')
+                    mdot = stream.get('mdot', '')
+                    cp_val = stream.get('cp', '')
+                
+                data_table_html += f"""
+                <tr>
+                    <td>{process_name}</td>
+                    <td>{subprocess_name}</td>
+                    <td>{stream_name}</td>
+                    <td>{stream_type}</td>
+                    <td>{tin}</td>
+                    <td>{tout}</td>
+                    <td>{mdot}</td>
+                    <td>{cp_val}</td>
+                    <td>{CP}</td>
+                    <td>{water_in}</td>
+                    <td>{water_out}</td>
+                    <td>{density}</td>
+                    <td>{pressure}</td>
+                </tr>
+                """
+        else:
+            # Subprocess with no streams
+            data_table_html += f"""
+            <tr>
+                <td>{process_name}</td>
+                <td>{subprocess_name}</td>
+                <td colspan="11"><em>No streams</em></td>
+            </tr>
+            """
+    
+    data_table_html += """
+        </tbody>
+    </table>
+    """
     
     # Get pinch notes
     pinch_notes = st.session_state.get('pinch_notes', '')
@@ -1349,6 +1560,50 @@ def generate_report():
         .streams-table tr:nth-child(even) {{
             background-color: #f9f9f9;
         }}
+        .data-table {{
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            font-size: 11px;
+        }}
+        .data-table th, .data-table td {{
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }}
+        .data-table th {{
+            background-color: #3498db;
+            color: white;
+            font-weight: bold;
+        }}
+        .data-table tr:nth-child(even) {{
+            background-color: #f9f9f9;
+        }}
+        .data-table tr:hover {{
+            background-color: #e3f2fd;
+        }}
+        .subprocess-maps-grid {{
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            margin: 30px 0;
+        }}
+        .subprocess-map-item {{
+            text-align: center;
+        }}
+        .subprocess-map-item img {{
+            max-width: 100%;
+            width: 100%;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }}
+        .subprocess-map-item p {{
+            font-weight: bold;
+            color: #555;
+            margin-top: 10px;
+            font-size: 14px;
+        }}
         .badge {{
             padding: 4px 10px;
             border-radius: 4px;
@@ -1480,16 +1735,23 @@ def generate_report():
         <div id="data-collection" class="page-content active">
             <h2>📍 Data Collection</h2>
             
+            <h3>Process Level Maps</h3>
             <div class="maps-container">
                 <div class="map-section">
-                    {"<img src='data:image/png;base64," + process_map_b64 + "' alt='Process'>" if process_map_b64 else "<p>Process map not available</p>"}
-                    <p>Process</p>
+                    {"<img src='data:image/png;base64," + process_map_osm_b64 + "' alt='Process - OpenStreetMap'>" if process_map_osm_b64 else "<p>Process map not available</p>"}
+                    <p>OpenStreetMap</p>
                 </div>
                 <div class="map-section">
-                    {"<img src='data:image/png;base64," + subprocess_map_b64 + "' alt='Subprocess'>" if subprocess_map_b64 else "<p>No subprocesses with coordinates found.</p>"}
-                    <p>Subprocess</p>
+                    {"<img src='data:image/png;base64," + process_map_satellite_b64 + "' alt='Process - Satellite'>" if process_map_satellite_b64 else "<p>Satellite map not available</p>"}
+                    <p>Satellite</p>
                 </div>
             </div>
+            
+            <h3>Subprocess Level Maps</h3>
+            {"<div class='subprocess-maps-grid'>" + "".join([f"<div class='subprocess-map-item'><img src='data:image/png;base64,{m['image']}' alt='{m['name']} Subprocess Map'><p>{m['name']}</p></div>" for m in subprocess_maps_b64]) + "</div>" if subprocess_maps_b64 else "<p>No subprocess maps available</p>"}
+            
+            <h3>📋 Collected Data</h3>
+            {data_table_html}
             
             <h3>📝 Data Collection Notes</h3>
             <div class="notes-section">
