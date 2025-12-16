@@ -2778,7 +2778,6 @@ else:
                             hpi_col1, hpi_spacer, hpi_col2 = st.columns([0.35, 0.05, 0.60])
                             
                             with hpi_col1:
-                                st.markdown("##### 🔍 Heat Pump Comparison")
                                 
                                 # Create color mapping for heat pumps based on integration data order
                                 hp_color_map = {}

@@ -863,23 +863,26 @@ with left:
                 st.rerun()
         else:
             st.markdown("**Load saved state:**")
-            uploaded_file = st.file_uploader("Load file", type=['json'], key="upload_state_left", label_visibility="collapsed")
-            
-            if uploaded_file is not None:
-                try:
-                    # Read the file immediately to avoid session state issues
-                    file_contents = uploaded_file.getvalue().decode('utf-8')
-                    success, message = load_app_state(file_contents)
-                    if success:
-                        st.session_state['state_just_loaded'] = True
-                        # Clear the file uploader to prevent MediaFileStorageError
-                        if 'upload_state_left' in st.session_state:
-                            del st.session_state['upload_state_left']
-                        st.rerun()
-                    else:
-                        st.error(message)
-                except Exception as e:
-                    st.error(f"Error loading file: {str(e)}")
+            # Open a modal popup so user can browse files in a dialog
+            if st.button("Load saved file", key="btn_open_load_modal_left"):
+                with st.modal("Load saved state"):
+                    st.write("Choose a JSON file containing a saved state to load.")
+                    uploaded_file = st.file_uploader("Select JSON file", type=['json'], key="modal_upload_left")
+                    if uploaded_file is not None:
+                        try:
+                            file_contents = uploaded_file.getvalue().decode('utf-8')
+                            success, message = load_app_state(file_contents)
+                            if success:
+                                st.session_state['state_just_loaded'] = True
+                                # Remove modal uploader key to avoid storage issues
+                                if 'modal_upload_left' in st.session_state:
+                                    del st.session_state['modal_upload_left']
+                                st.success("State loaded successfully. Refreshing view...")
+                                st.experimental_rerun()
+                            else:
+                                st.error(message)
+                        except Exception as e:
+                            st.error(f"Error loading file: {str(e)}")
         
         st.markdown("---")
     
