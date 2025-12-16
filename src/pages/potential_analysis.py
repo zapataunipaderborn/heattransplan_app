@@ -252,6 +252,7 @@ def generate_process_level_map():
                                 outline=(50, 50, 50, 255),
                                 width=1,
                             )
+                            draw = ImageDraw.Draw(base_img)
                     
                 except (ValueError, TypeError):
                     continue

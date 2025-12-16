@@ -2322,6 +2322,7 @@ div.leaflet-container {background: #f2f2f3 !important;}
                                             outline=(50, 50, 50, 255),
                                             width=1,
                                         )
+                                        draw = ImageDraw.Draw(base_img)
                                         
                                         # Store circle info for click detection
                                         stream_circles.append({
@@ -2832,6 +2833,7 @@ div.leaflet-container {background: #f2f2f3 !important;}
                                     outline=(50, 50, 50, 255),
                                     width=1,
                                 )
+                                draw = ImageDraw.Draw(base_img)
                                 
                                 # Store circle info for click detection
                                 # Get parent process name
