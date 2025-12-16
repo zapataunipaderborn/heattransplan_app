@@ -1330,13 +1330,23 @@ def generate_report():
                                     all_hp_data.sort(key=lambda x: x['cop'], reverse=True)
                                     
                                     if all_hp_data:
-                                        # Build heat pump comparison table
+                                        # Build heat pump comparison table with dark-mode aware styling
                                         hp_table_html = """
-                                        <table class="streams-table">
-                                            <thead>
-                                                <tr><th>Heat Pump</th><th>COP</th><th>T_source (°C)</th><th>T_sink (°C)</th><th>Q_source (kW)</th><th>Q_sink (kW)</th></tr>
-                                            </thead>
-                                            <tbody>
+                                        <style>
+                                        /* Use inherited colors so table adapts to Streamlit theme */
+                                        .hp-table{width:100%;border-collapse:collapse;font-size:12px;background-color:transparent;color:inherit;}
+                                        .hp-table th{background-color:transparent;padding:8px;text-align:left;border:1px solid rgba(0,0,0,0.08);font-weight:bold;color:inherit;}
+                                        .hp-table td{padding:8px;border:1px solid rgba(0,0,0,0.08);color:inherit;}
+                                        .hp-table tr:nth-child(even){background-color:transparent;}
+                                        @media (prefers-color-scheme: dark) {
+                                            .hp-table th{border-color: rgba(255,255,255,0.06);}
+                                            .hp-table td{border-color: rgba(255,255,255,0.06);}
+                                        }
+                                        </style>
+                                        <table class="hp-table"><thead>
+                                            <tr><th>Heat Pump</th><th>COP</th><th>T_source (°C)</th><th>T_sink (°C)</th><th>Q_source (kW)</th><th>Q_sink (kW)</th></tr>
+                                        </thead>
+                                        <tbody>
                                         """
                                         for hp in all_hp_data:
                                             hp_table_html += f"""
@@ -2796,8 +2806,20 @@ else:
                                 # Sort available heat pumps by COP (descending)
                                 available_data.sort(key=lambda x: x['cop_value'], reverse=True)
                                 
-                                # Build table without symbols
-                                table_html = '<style>.hp-table{width:100%;border-collapse:collapse;font-size:12px;}.hp-table th{background-color:#f0f0f0;padding:8px;text-align:left;border:1px solid #ddd;font-weight:bold;}.hp-table td{padding:8px;border:1px solid #ddd;}.hp-table tr:nth-child(even){background-color:#f9f9f9;}</style><table class="hp-table"><thead><tr><th>Heat Pump</th><th>COP</th><th>T_source (°C)</th><th>T_sink (°C)</th><th>Q_source (kW)</th><th>Q_sink (kW)</th></tr></thead><tbody>'
+                                # Build table with dark-mode aware styling
+                                table_html = (
+                                    '<style>'
+                                    '.hp-table{width:100%;border-collapse:collapse;font-size:12px;background-color:transparent;color:inherit;}'
+                                    '.hp-table th{background-color:transparent;padding:8px;text-align:left;border:1px solid rgba(0,0,0,0.08);font-weight:bold;color:inherit;}'
+                                    '.hp-table td{padding:8px;border:1px solid rgba(0,0,0,0.08);color:inherit;}'
+                                    '.hp-table tr:nth-child(even){background-color:transparent;}'
+                                    '@media (prefers-color-scheme: dark) {'
+                                    '.hp-table th{border-color: rgba(255,255,255,0.06);}'
+                                    '.hp-table td{border-color: rgba(255,255,255,0.06);}'
+                                    '}'
+                                    '</style>'
+                                    '<table class="hp-table"><thead><tr><th>Heat Pump</th><th>COP</th><th>T_source (°C)</th><th>T_sink (°C)</th><th>Q_source (kW)</th><th>Q_sink (kW)</th></tr></thead><tbody>'
+                                )
                                 
                                 for item in available_data:
                                     table_html += f'<tr><td>{item["Heat Pump"]}</td><td>{item["COP"]}</td><td>{item["T_source (°C)"]}</td><td>{item["T_sink (°C)"]}</td><td>{item["Q_source (kW)"]}</td><td>{item["Q_sink (kW)"]}</td></tr>'
