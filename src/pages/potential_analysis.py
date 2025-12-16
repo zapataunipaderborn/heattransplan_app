@@ -227,13 +227,13 @@ def generate_process_level_map():
                                     max_temp = max(tin_f, tout_f)
                                     
                                     if tin_f > tout_f:
-                                        # Hot stream
+                                        # Hot streams (Heat Sources)
                                         if max_temp > 100:
                                             circle_color = (255, 0, 0, 220)  # Strong red
                                         else:
                                             circle_color = (255, 100, 100, 220)  # Less strong red
                                     else:
-                                        # Cold stream
+                                        # Cold streams (Heat Sinks)
                                         if max_temp > 100:
                                             circle_color = (0, 0, 255, 220)  # Strong blue
                                         else:
@@ -1124,7 +1124,7 @@ def generate_report():
                                 
                                 # Show Q if available
                                 q_display = f"{info['Q']:.2f} kW" if info['Q'] is not None else "N/A"
-                                type_display = info['type'] if info['type'] else "N/A"
+                                type_display = "Hot streams (Heat Sources)" if info['type'] == "HOT" else ("Cold streams (Heat Sinks)" if info['type'] == "COLD" else (info['type'] if info['type'] else "N/A"))
                                 
                                 stream_list_html += f"""
                                 <div class="stream-item {selected_class}">
@@ -1156,7 +1156,7 @@ def generate_report():
                     <tbody>
                 """
                 for s in streams_data:
-                    type_badge = f'<span class="badge hot">HOT</span>' if s['type'] == 'HOT' else f'<span class="badge cold">COLD</span>'
+                    type_badge = f'<span class="badge hot">Hot streams (Heat Sources)</span>' if s['type'] == 'Hot stream (Heat Source)' else f'<span class="badge cold">Cold stream (Heat Sink)</span>'
                     streams_table_html += f"""
                         <tr>
                             <td>{s['name']}</td>
@@ -1210,8 +1210,8 @@ def generate_report():
                     # Generate Composite Curves plot using Plotly (interactive HTML)
                     diagram = results['composite_diagram']
                     fig1 = go.Figure()
-                    fig1.add_trace(go.Scatter(x=diagram['hot']['H'], y=diagram['hot']['T'], mode='lines+markers', name='Hot', line=dict(color='red', width=3), marker=dict(size=8)))
-                    fig1.add_trace(go.Scatter(x=diagram['cold']['H'], y=diagram['cold']['T'], mode='lines+markers', name='Cold', line=dict(color='blue', width=3), marker=dict(size=8)))
+                    fig1.add_trace(go.Scatter(x=diagram['hot']['H'], y=diagram['hot']['T'], mode='lines+markers', name='Hot streams (Heat sources)', line=dict(color='red', width=3), marker=dict(size=8)))
+                    fig1.add_trace(go.Scatter(x=diagram['cold']['H'], y=diagram['cold']['T'], mode='lines+markers', name='Cold streams (Heat sinks)', line=dict(color='blue', width=3), marker=dict(size=8)))
                     fig1.add_hline(y=results['pinch_temperature'], line_dash='dash', line_color='gray', annotation_text=f"Pinch: {results['pinch_temperature']:.1f}°C")
                     fig1.update_layout(title='Composite Curves', xaxis_title='Enthalpy H (kW)', yaxis_title='Temperature T (°C)', height=600, width=900, xaxis=dict(rangemode='tozero'), yaxis=dict(rangemode='tozero'))
                     composite_plot_html = fig1.to_html(full_html=False, include_plotlyjs='cdn')
@@ -2039,7 +2039,7 @@ else:
     
     # Helper function to determine stream type and extract data
     def get_stream_info(stream):
-        """Extract Tin, Tout, mdot, cp, CP from stream and determine if HOT or COLD.
+        """Extract Tin, Tout, mdot, cp, CP from stream and determine if Hot streams (Heat Sources) or Cold streams (Heat Sinks).
         Calculate Q = CP * (Tout - Tin).
         CP can be provided directly, or calculated as mdot * cp.
         """
@@ -2491,11 +2491,11 @@ else:
                         title_text = "Composite Curves"
                         tmin_half = 0
                     
-                    # Hot composite curve with hover info
+                    # Hot streams (Heat Sources) composite curve with hover info
                     hot_T = diagram['hot']['T']
                     hot_H = diagram['hot']['H']
                     
-                    # Create hover text for hot curve points
+                    # Create hover text for Hot streams (Heat Sources) curve points
                     hot_hover = []
                     for i, (h, t) in enumerate(zip(hot_H, hot_T)):
                         # Find streams at this temperature (adjust for shifted temps)
@@ -2505,24 +2505,24 @@ else:
                             actual_t = t
                         matching = [s['name'] for s in hot_streams if min(s['Tin'], s['Tout']) <= actual_t <= max(s['Tin'], s['Tout'])]
                         stream_info = '<br>'.join(matching) if matching else 'Composite'
-                        label = f"<b>Hot {curve_label}</b>" if curve_label else "<b>Hot Composite</b>"
+                        label = f"<b>Hot streams (Heat Sources) {curve_label}</b>" if curve_label else "<b>Hot streams (Heat Sources) Composite</b>"
                         hot_hover.append(f"{label}<br>T: {t:.1f}°C<br>H: {h:.1f} kW<br>Streams: {stream_info}")
                     
                     fig1.add_trace(go.Scatter(
                         x=hot_H, y=hot_T,
                         mode='lines+markers',
-                        name='Hot',
+                        name='Hot streams (Heat Sources)',
                         line=dict(color='red', width=2),
                         marker=dict(size=6),
                         hovertemplate='%{text}<extra></extra>',
                         text=hot_hover
                     ))
                     
-                    # Cold composite curve with hover info
+                    # Cold streams (Heat Sinks) composite curve with hover info
                     cold_T = diagram['cold']['T']
                     cold_H = diagram['cold']['H']
                     
-                    # Create hover text for cold curve points
+                    # Create hover text for Cold streams (Heat Sinks) curve points
                     cold_hover = []
                     for i, (h, t) in enumerate(zip(cold_H, cold_T)):
                         if show_shifted:
@@ -2531,13 +2531,13 @@ else:
                             actual_t = t
                         matching = [s['name'] for s in cold_streams if min(s['Tin'], s['Tout']) <= actual_t <= max(s['Tin'], s['Tout'])]
                         stream_info = '<br>'.join(matching) if matching else 'Composite'
-                        label = f"<b>Cold {curve_label}</b>" if curve_label else "<b>Cold Composite</b>"
+                        label = f"<b>Cold streams (Heat Sinks) {curve_label}</b>" if curve_label else "<b>Cold streams (Heat Sinks) Composite</b>"
                         cold_hover.append(f"{label}<br>T: {t:.1f}°C<br>H: {h:.1f} kW<br>Streams: {stream_info}")
                     
                     fig1.add_trace(go.Scatter(
                         x=cold_H, y=cold_T,
                         mode='lines+markers',
-                        name='Cold',
+                        name='Cold streams (Heat Sinks)',
                         line=dict(color='blue', width=2),
                         marker=dict(size=6),
                         hovertemplate='%{text}<extra></extra>',
