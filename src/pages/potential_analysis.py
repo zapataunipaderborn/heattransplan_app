@@ -214,9 +214,9 @@ def generate_subprocess_level_map(group_idx=None):
     
     # Create mapping of subprocess index to group index
     subprocess_to_group = {}
-    for group_idx, group_subprocess_list in enumerate(proc_groups):
+    for g_idx, group_subprocess_list in enumerate(proc_groups):
         for subprocess_idx in group_subprocess_list:
-            subprocess_to_group[subprocess_idx] = group_idx
+            subprocess_to_group[subprocess_idx] = g_idx
     
     # Draw white canvas overlay (90% of screen, centered) - ALWAYS show for report
     overlay_w = int(w * 0.9)
