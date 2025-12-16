@@ -459,6 +459,15 @@ def generate_subprocess_level_map(group_idx=None):
             cp_val = sv.get('cp', '') or s.get('cp', '')
             CP_val = sv.get('CP', '')
             
+            # Calculate Q (heat power)
+            Q_val = ''
+            try:
+                if tin_val and tout_val and mdot_val and cp_val:
+                    Q_calc = float(mdot_val) * float(cp_val) * abs(float(tout_val) - float(tin_val))
+                    Q_val = f"{Q_calc:.2f}"
+            except (ValueError, TypeError):
+                Q_val = ''
+            
             stream_parts = []
             stream_name = s.get('name', '')
             if tin_val:
@@ -471,6 +480,8 @@ def generate_subprocess_level_map(group_idx=None):
                 stream_parts.append(f"cp={cp_val}")
             if CP_val and "CP" in display_vars:
                 stream_parts.append(f"CP={CP_val}")
+            if Q_val:
+                stream_parts.append(f"Q={Q_val}kW")
             
             if stream_parts:
                 label = " | ".join(stream_parts)
@@ -795,6 +806,7 @@ def generate_report():
                 <th>ṁ</th>
                 <th>cp</th>
                 <th>CP</th>
+                <th>Q (kW)</th>
                 <th>Water In</th>
                 <th>Water Out</th>
                 <th>Density</th>
@@ -840,6 +852,19 @@ def generate_report():
                     mdot = stream.get('mdot', '')
                     cp_val = stream.get('cp', '')
                 
+                # Calculate Q (heat power) = ṁ × cp × ΔT
+                Q = ''
+                try:
+                    if tin and tout and mdot and cp_val:
+                        tin_f = float(tin)
+                        tout_f = float(tout)
+                        mdot_f = float(mdot)
+                        cp_f = float(cp_val)
+                        Q_calc = mdot_f * cp_f * abs(tout_f - tin_f)
+                        Q = f"{Q_calc:.2f}"
+                except (ValueError, TypeError):
+                    Q = ''
+                
                 data_table_html += f"""
                 <tr>
                     <td>{process_name}</td>
@@ -851,6 +876,7 @@ def generate_report():
                     <td>{mdot}</td>
                     <td>{cp_val}</td>
                     <td>{CP}</td>
+                    <td>{Q}</td>
                     <td>{water_in}</td>
                     <td>{water_out}</td>
                     <td>{density}</td>
@@ -863,7 +889,7 @@ def generate_report():
             <tr>
                 <td>{process_name}</td>
                 <td>{subprocess_name}</td>
-                <td colspan="11"><em>No streams</em></td>
+                <td colspan="12"><em>No streams</em></td>
             </tr>
             """
     
