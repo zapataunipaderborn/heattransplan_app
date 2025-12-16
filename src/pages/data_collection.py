@@ -780,13 +780,8 @@ with left:
                     render_zoom = round(float(new_zoom))
                     for layer_name, template in TILE_TEMPLATES.items():
                         smap = StaticMap(MAP_WIDTH, MAP_HEIGHT, url_template=template)
-                        try:
-                            marker = CircleMarker((new_center[1], new_center[0]), 'red', 12)
-                            smap.add_marker(marker)
-                        except (RuntimeError, OSError):
-                            pass
                         # Use rounded zoom instead of truncated to better match Folium view
-                        img_layer = smap.render(zoom=render_zoom)
+                        img_layer = smap.render(zoom=render_zoom, center=(new_center[1], new_center[0]))
                         if img_layer is None:
                             st.error(f"Failed to render {layer_name} map layer")
                             continue
