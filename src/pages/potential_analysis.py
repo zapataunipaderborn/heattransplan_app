@@ -1349,11 +1349,11 @@ def generate_report():
                     <h3>Pinch Analysis Results (ΔTmin = {tmin}°C)</h3>
                     <div class="metrics-row">
                         <div class="metric-card hot">
-                            <div class="metric-label">Minimum Hot Utility</div>
+                            <div class="metric-label">Minimum Heating Demand</div>
                             <div class="metric-value">{results['hot_utility']:.2f} kW</div>
                         </div>
                         <div class="metric-card cold">
-                            <div class="metric-label">Minimum Cold Utility</div>
+                            <div class="metric-label">Minimum Cooling Demand</div>
                             <div class="metric-value">{results['cold_utility']:.2f} kW</div>
                         </div>
                         <div class="metric-card pinch">
@@ -2230,8 +2230,8 @@ else:
                     'streams': list(pinch.streams)
                 }
                 
-                metric1.metric("Minimum Hot Utility", f"{results['hot_utility']:.2f} kW")
-                metric2.metric("Minimum Cold Utility", f"{results['cold_utility']:.2f} kW")
+                metric1.metric("Minimum Heating Demand", f"{results['hot_utility']:.2f} kW")
+                metric2.metric("Minimum Cooling Demand", f"{results['cold_utility']:.2f} kW")
                 metric3.metric("Pinch Temperature", f"{results['pinch_temperature']:.1f} °C")
                 metric4.metric("Heat Recovery Potential", f"{results['heat_recovery']:.2f} kW")
                 
