@@ -207,17 +207,37 @@ def generate_process_level_map():
                             
                             if Q > 0:
                                 import math as _m
-                                radius = base_radius + min(20, int(_m.log10(Q + 1) * 4))
+                                # New size logic: below 1000 smaller, above 5000 very big, scaled in between
+                                if Q < 1000:
+                                    radius = base_radius + 5  # smaller
+                                elif Q > 5000:
+                                    radius = base_radius + 25  # very big
+                                else:
+                                    # Scale between 1000-5000
+                                    scale_factor = (Q - 1000) / (5000 - 1000)  # 0 to 1
+                                    radius = base_radius + 5 + int(scale_factor * 20)  # 5 to 25
                             else:
                                 radius = base_radius
                             
-                            # Determine color
+                            # Determine color with temperature-based intensity
                             try:
                                 if tin and tout:
-                                    if float(tin) > float(tout):
-                                        circle_color = (255, 100, 100, 220)  # Red (hot)
+                                    tin_f = float(tin)
+                                    tout_f = float(tout)
+                                    max_temp = max(tin_f, tout_f)
+                                    
+                                    if tin_f > tout_f:
+                                        # Hot stream
+                                        if max_temp > 100:
+                                            circle_color = (255, 0, 0, 220)  # Strong red
+                                        else:
+                                            circle_color = (255, 100, 100, 220)  # Less strong red
                                     else:
-                                        circle_color = (100, 150, 255, 220)  # Blue (cold)
+                                        # Cold stream
+                                        if max_temp > 100:
+                                            circle_color = (0, 0, 255, 220)  # Strong blue
+                                        else:
+                                            circle_color = (100, 150, 255, 220)  # Less strong blue
                                 else:
                                     circle_color = (150, 150, 150, 200)
                             except (ValueError, TypeError):
