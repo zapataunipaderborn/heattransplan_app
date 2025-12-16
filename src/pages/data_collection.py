@@ -2147,6 +2147,9 @@ div.leaflet-container {background: #f2f2f3 !important;}
                 
                 group_expanded = st.session_state.get('proc_group_expanded', [])
                 
+                # Store circle information for click detection
+                stream_circles = []  # List of dicts: {'x': int, 'y': int, 'radius': int, 'stream_info': dict}
+                
                 # First pass: draw main process rectangles (when collapsed) BEHIND grey overlay
                 group_coords = st.session_state.get('proc_group_coordinates', {})
                 for group_idx, coords_data in group_coords.items():
@@ -2228,9 +2231,9 @@ div.leaflet-container {background: #f2f2f3 !important;}
                                 
                                 if all_streams:
                                     # Calculate Q for each stream and draw circles above the box
-                                    circle_y = y0 - 35  # Position circles above the box (more space)
-                                    circle_spacing = 28  # Horizontal spacing between circles (more space)
-                                    base_radius = 8  # Base radius for circles (larger)
+                                    circle_y = y0 - 20  # Position circles closer to the box
+                                    circle_spacing = 32  # Horizontal spacing between circles
+                                    base_radius = 15  # Base radius for circles (larger)
                                     
                                     # Calculate total width needed for all circles
                                     total_width = len(all_streams) * circle_spacing
@@ -2258,8 +2261,8 @@ div.leaflet-container {background: #f2f2f3 !important;}
                                         # Determine circle size based on Q (scale logarithmically with more aggressive scaling)
                                         if Q > 0:
                                             import math as _m
-                                            # More aggressive scaling: Q from 1-10000 kW maps to radius 8-24px
-                                            radius = base_radius + min(16, int(_m.log10(Q + 1) * 3.5))
+                                            # More aggressive scaling: Q from 1-10000 kW maps to radius 10-30px
+                                            radius = base_radius + min(20, int(_m.log10(Q + 1) * 4))
                                         else:
                                             radius = base_radius
                                         
@@ -2287,6 +2290,21 @@ div.leaflet-container {background: #f2f2f3 !important;}
                                             outline=(50, 50, 50, 255),
                                             width=1
                                         )
+                                        
+                                        # Store circle info for click detection
+                                        stream_circles.append({
+                                            'x': circle_x,
+                                            'y': circle_y,
+                                            'radius': radius,
+                                            'stream_name': stream.get('name', 'Unnamed Stream'),
+                                            'stream_type': stream.get('type', 'product'),
+                                            'tin': tin,
+                                            'tout': tout,
+                                            'mdot': mdot,
+                                            'cp': cp_val,
+                                            'Q': f"{Q:.2f}" if Q > 0 else "N/A",
+                                            'process': st.session_state['proc_group_names'][group_idx] if group_idx < len(st.session_state.get('proc_group_names', [])) else 'Unknown'
+                                        })
                                     
                             except (ValueError, TypeError):
                                 continue
@@ -2698,9 +2716,9 @@ div.leaflet-container {background: #f2f2f3 !important;}
                         
                         if streams:
                             # Calculate Q for each stream and draw circles above the box
-                            circle_y = y0 - 35  # Position circles above the box (more space)
-                            circle_spacing = 28  # Horizontal spacing between circles (more space)
-                            base_radius = 8  # Base radius for circles (larger)
+                            circle_y = y0 - 20  # Position circles closer to the box
+                            circle_spacing = 32  # Horizontal spacing between circles
+                            base_radius = 10  # Base radius for circles (larger)
                             
                             # Calculate total width needed for all circles
                             total_width = len(streams) * circle_spacing
@@ -2728,8 +2746,8 @@ div.leaflet-container {background: #f2f2f3 !important;}
                                 # Determine circle size based on Q (scale logarithmically with more aggressive scaling)
                                 if Q > 0:
                                     import math as _m
-                                    # More aggressive scaling: Q from 1-10000 kW maps to radius 8-24px
-                                    radius = base_radius + min(16, int(_m.log10(Q + 1) * 3.5))
+                                    # More aggressive scaling: Q from 1-10000 kW maps to radius 10-30px
+                                    radius = base_radius + min(20, int(_m.log10(Q + 1) * 4))
                                 else:
                                     radius = base_radius
                                 
@@ -2757,6 +2775,26 @@ div.leaflet-container {background: #f2f2f3 !important;}
                                     outline=(50, 50, 50, 255),
                                     width=1
                                 )
+                                
+                                # Store circle info for click detection
+                                # Get parent process name
+                                parent_group_idx = subprocess_to_group.get(subprocess_idx)
+                                parent_process = st.session_state.get('proc_group_names', [])[parent_group_idx] if parent_group_idx is not None and parent_group_idx < len(st.session_state.get('proc_group_names', [])) else 'Unknown'
+                                
+                                stream_circles.append({
+                                    'x': circle_x,
+                                    'y': circle_y,
+                                    'radius': radius,
+                                    'stream_name': stream.get('name', 'Unnamed Stream'),
+                                    'stream_type': stream.get('type', 'product'),
+                                    'tin': tin,
+                                    'tout': tout,
+                                    'mdot': mdot,
+                                    'cp': cp_val,
+                                    'Q': f"{Q:.2f}" if Q > 0 else "N/A",
+                                    'subprocess': subprocess.get('name', f'Subprocess {subprocess_idx + 1}'),
+                                    'process': parent_process
+                                })
 
                 # Draw all product stream labels on connections (after boxes so they appear on top)
                 for conn in connection_product_streams:
@@ -3259,6 +3297,35 @@ div.leaflet-container {background: #f2f2f3 !important;}
                     st.session_state['subprocess_canvas_image'] = subprocess_canvas_buffer.getvalue()
                 
                 coords = streamlit_image_coordinates(img, key="meas_img", width=w)
+                
+                # Check for stream circle clicks (when not in placement mode)
+                if coords is not None and not st.session_state['placement_mode']:
+                    x_click, y_click = coords['x'], coords['y']
+                    # Check if click is within any circle
+                    clicked_stream = None
+                    for circle in stream_circles:
+                        import math as _m
+                        dist = _m.sqrt((x_click - circle['x'])**2 + (y_click - circle['y'])**2)
+                        if dist <= circle['radius']:
+                            clicked_stream = circle
+                            break
+                    
+                    if clicked_stream:
+                        # Display stream information
+                        st.info(f"**{clicked_stream['stream_name']}** ({clicked_stream['stream_type']})")
+                        info_cols = st.columns(2)
+                        with info_cols[0]:
+                            st.write(f"**Process:** {clicked_stream['process']}")
+                            if 'subprocess' in clicked_stream:
+                                st.write(f"**Subprocess:** {clicked_stream['subprocess']}")
+                            st.write(f"**Type:** {clicked_stream['stream_type']}")
+                        with info_cols[1]:
+                            st.write(f"**Tin:** {clicked_stream['tin']} °C")
+                            st.write(f"**Tout:** {clicked_stream['tout']} °C")
+                            st.write(f"**ṁ:** {clicked_stream['mdot']}")
+                            st.write(f"**cp:** {clicked_stream['cp']}")
+                        st.success(f"**Heat Power (Q): {clicked_stream['Q']} kW**")
+                
                 if st.session_state['placement_mode'] and coords is not None and st.session_state.get('placing_process_idx') is not None:
                     x_px, y_px = coords['x'], coords['y']
                     lon_new, lat_new = snapshot_pixel_to_lonlat(x_px, y_px, st.session_state['map_center'][::-1], st.session_state['map_zoom'], w, h)
