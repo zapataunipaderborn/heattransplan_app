@@ -161,6 +161,76 @@ def generate_process_level_map():
                     text_x = x0 + (box_w - tw) // 2
                     text_y = y0 + (box_h - th) // 2
                     draw.text((text_x, text_y), group_label, fill=text_color, font=font)
+                    
+                    # Draw stream circles above the process box
+                    group_subprocess_list = st.session_state.get('proc_groups', [])[group_idx] if group_idx < len(st.session_state.get('proc_groups', [])) else []
+                    all_streams = []
+                    selected_items = st.session_state.get('selected_items', {})
+                    
+                    # Collect selected streams from all subprocesses
+                    for sub_idx in group_subprocess_list:
+                        if sub_idx < len(st.session_state.get('processes', [])):
+                            subprocess = st.session_state['processes'][sub_idx]
+                            for stream_idx, stream in enumerate(subprocess.get('streams', [])):
+                                # Only add if selected
+                                stream_key = f"stream_{sub_idx}_{stream_idx}"
+                                if selected_items.get(stream_key, True):
+                                    all_streams.append(stream)
+                    
+                    if all_streams:
+                        circle_y = y0 - 20
+                        circle_spacing = 32
+                        base_radius = 15
+                        total_width = len(all_streams) * circle_spacing
+                        start_x = int((x0 + x1) / 2 - total_width / 2 + circle_spacing / 2)
+                        
+                        for stream_idx, stream in enumerate(all_streams):
+                            sv = stream.get('stream_values', {})
+                            tin = sv.get('Tin', '') or stream.get('temp_in', '')
+                            tout = sv.get('Tout', '') or stream.get('temp_out', '')
+                            mdot = sv.get('ṁ', '') or stream.get('mdot', '')
+                            cp_val = sv.get('cp', '') or stream.get('cp', '')
+                            CP_val = sv.get('CP', '') or stream.get('CP', '')
+                            
+                            Q = 0
+                            try:
+                                if tin and tout:
+                                    tin_f = float(tin)
+                                    tout_f = float(tout)
+                                    delta_T = abs(tout_f - tin_f)
+                                    if CP_val:
+                                        Q = float(CP_val) * delta_T
+                                    elif mdot and cp_val:
+                                        Q = float(mdot) * float(cp_val) * delta_T
+                            except (ValueError, TypeError):
+                                Q = 0
+                            
+                            if Q > 0:
+                                import math as _m
+                                radius = base_radius + min(20, int(_m.log10(Q + 1) * 4))
+                            else:
+                                radius = base_radius
+                            
+                            # Determine color
+                            try:
+                                if tin and tout:
+                                    if float(tin) > float(tout):
+                                        circle_color = (255, 100, 100, 220)  # Red (hot)
+                                    else:
+                                        circle_color = (100, 150, 255, 220)  # Blue (cold)
+                                else:
+                                    circle_color = (150, 150, 150, 200)
+                            except (ValueError, TypeError):
+                                circle_color = (150, 150, 150, 200)
+                            
+                            circle_x = start_x + stream_idx * circle_spacing
+                            draw.ellipse(
+                                [circle_x - radius, circle_y - radius, circle_x + radius, circle_y + radius],
+                                fill=circle_color,
+                                outline=(50, 50, 50, 255),
+                                width=1
+                            )
+                    
                 except (ValueError, TypeError):
                     continue
     
@@ -1014,6 +1084,49 @@ def generate_report():
                             })
             
             if len(streams_data) >= 2:
+                # Build stream list HTML for side-by-side layout
+                stream_list_html = ""
+                for sel_key, is_sel in sel_items.items():
+                    if sel_key.startswith("stream_"):
+                        parts_split = sel_key.split("_")
+                        p_idx, s_idx = int(parts_split[1]), int(parts_split[2])
+                        if p_idx < len(processes):
+                            proc = processes[p_idx]
+                            proc_streams = proc.get('streams', [])
+                            if s_idx < len(proc_streams):
+                                strm = proc_streams[s_idx]
+                                info = get_stream_info_report(strm)
+                                stream_name = f"{proc.get('name', f'Subprocess {p_idx + 1}')} - {strm.get('name', f'Stream {s_idx + 1}')}"
+                                
+                                # Determine if selected
+                                selected_class = "selected" if is_sel else ""
+                                checkbox_content = "✓" if is_sel else ""
+                                
+                                # Show Q if available
+                                q_display = f"{info['Q']:.2f} kW" if info['Q'] is not None else "N/A"
+                                type_display = info['type'] if info['type'] else "N/A"
+                                
+                                stream_list_html += f"""
+                                <div class="stream-item {selected_class}">
+                                    <span class="stream-checkbox">{checkbox_content}</span>
+                                    <div style="flex: 1;">
+                                        <div><strong>{stream_name}</strong></div>
+                                        <div style="font-size: 11px; color: #666;">
+                                            Type: {type_display} | Q: {q_display}
+                                        </div>
+                                    </div>
+                                </div>
+                                """
+                
+                # Generate process map with circles for selected streams
+                process_map_with_streams = generate_process_level_map()
+                process_map_streams_b64 = ""
+                if process_map_with_streams:
+                    img_buffer = BytesIO()
+                    process_map_with_streams.save(img_buffer, format='PNG')
+                    img_buffer.seek(0)
+                    process_map_streams_b64 = base64.b64encode(img_buffer.getvalue()).decode('utf-8')
+                
                 # Build streams table HTML
                 streams_table_html = """
                 <table class="streams-table">
@@ -1369,7 +1482,19 @@ def generate_report():
                     pinch_section_html = f"""
                     <h2>📊 Potential Analysis</h2>
                     
-                    <h3>Selected Streams</h3>
+                    <h3>Stream Selection & Process Map</h3>
+                    <div class="stream-map-layout">
+                        <div class="stream-list-section">
+                            <h4>Selected Streams</h4>
+                            {stream_list_html}
+                        </div>
+                        <div class="map-display-section">
+                            <h4>Process Overview</h4>
+                            {"<img src='data:image/png;base64," + process_map_streams_b64 + "' alt='Process Map with Streams'>" if process_map_streams_b64 else "<p>Map not available</p>"}
+                        </div>
+                    </div>
+                    
+                    <h3>Selected Streams (Detailed)</h3>
                     {streams_table_html}
                     
                     <h3>Pinch Analysis Results (ΔTmin = {tmin}°C)</h3>
@@ -1722,6 +1847,53 @@ def generate_report():
         .hpi-plot-section > div {{
             width: 100% !important;
         }}
+        /* Stream Selection and Map Layout */
+        .stream-map-layout {{
+            display: flex;
+            gap: 20px;
+            margin: 30px 0;
+            align-items: flex-start;
+        }}
+        .stream-list-section {{
+            flex: 0 0 50%;
+            max-width: 50%;
+        }}
+        .map-display-section {{
+            flex: 0 0 50%;
+            max-width: 50%;
+        }}
+        .map-display-section img {{
+            max-width: 100%;
+            width: 100%;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }}
+        .stream-item {{
+            padding: 8px 12px;
+            margin: 4px 0;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+            background-color: #f9f9f9;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }}
+        .stream-item.selected {{
+            background-color: #e3f2fd;
+            border-color: #2196F3;
+        }}
+        .stream-checkbox {{
+            width: 16px;
+            height: 16px;
+            border: 2px solid #2196F3;
+            border-radius: 3px;
+            display: inline-block;
+            text-align: center;
+            line-height: 16px;
+            font-size: 12px;
+            color: #2196F3;
+        }}
         @media print {{
             body {{
                 background-color: white;
@@ -1842,6 +2014,9 @@ processes = st.session_state.get('processes', [])
 if not processes:
     st.info("No processes found. Please add processes in the Data Collection page first.")
 else:
+    # Create side-by-side layout: streams on left, map on right
+    streams_col, map_col = st.columns([1, 1])
+    
     # Helper function to determine stream type and extract data
     def get_stream_info(stream):
         """Extract Tin, Tout, mdot, cp, CP from stream and determine if HOT or COLD.
@@ -1974,54 +2149,66 @@ else:
             'type': stream_type
         }
     
-    # Display each process and its streams
-    for idx, process in enumerate(processes):
-        process_name = process.get('name', f'Subprocess {idx + 1}')
-        
-        # Only show process header if it has streams
-        streams = process.get('streams', [])
-        if streams:
-            st.markdown(f"**{process_name}**")
+    # Left column: Display streams with selection checkboxes
+    with streams_col:
+        st.markdown("**Streams Selection**")
+        for idx, process in enumerate(processes):
+            process_name = process.get('name', f'Subprocess {idx + 1}')
             
-            for stream_idx, stream in enumerate(streams):
-                stream_key = f"stream_{idx}_{stream_idx}"
-                if stream_key not in st.session_state['selected_items']:
-                    st.session_state['selected_items'][stream_key] = True
+            # Only show process header if it has streams
+            streams = process.get('streams', [])
+            if streams:
+                st.markdown(f"**{process_name}**")
                 
-                stream_cols = st.columns([0.05, 0.25, 0.7])
-                stream_selected = stream_cols[0].checkbox(
-                    "S",
-                    key=f"cb_{stream_key}",
-                    value=st.session_state['selected_items'][stream_key],
-                    label_visibility="collapsed"
-                )
-                st.session_state['selected_items'][stream_key] = stream_selected
-                
-                # Display stream name
-                stream_name = stream.get('name', f'Stream {stream_idx + 1}')
-                stream_cols[1].write(stream_name)
-                
-                # Get stream info and display type + key values
-                info = get_stream_info(stream)
-                
-                display_parts = []
-                if info['tin'] is not None:
-                    display_parts.append(f"Tin:{info['tin']}°C")
-                if info['tout'] is not None:
-                    display_parts.append(f"Tout:{info['tout']}°C")
-                if info['CP'] is not None:
-                    display_parts.append(f"CP:{info['CP']:.2f}")
-                if info['Q'] is not None:
-                    display_parts.append(f"Q:{info['Q']:.2f} kW")
-                
-                if info['type']:
-                    type_color = "🔴" if info['type'] == "HOT" else "🔵"
-                    display_parts.append(f"{type_color} {info['type']}")
-                
-                if display_parts:
-                    stream_cols[2].caption(' | '.join(display_parts))
-                else:
-                    stream_cols[2].caption("(incomplete data)")
+                for stream_idx, stream in enumerate(streams):
+                    stream_key = f"stream_{idx}_{stream_idx}"
+                    if stream_key not in st.session_state['selected_items']:
+                        st.session_state['selected_items'][stream_key] = True
+                    
+                    stream_cols_inner = st.columns([0.05, 0.25, 0.7])
+                    stream_selected = stream_cols_inner[0].checkbox(
+                        "S",
+                        key=f"cb_{stream_key}",
+                        value=st.session_state['selected_items'][stream_key],
+                        label_visibility="collapsed"
+                    )
+                    st.session_state['selected_items'][stream_key] = stream_selected
+                    
+                    # Display stream name
+                    stream_name = stream.get('name', f'Stream {stream_idx + 1}')
+                    stream_cols_inner[1].write(stream_name)
+                    
+                    # Get stream info and display type + key values
+                    info = get_stream_info(stream)
+                    
+                    display_parts = []
+                    if info['tin'] is not None:
+                        display_parts.append(f"Tin:{info['tin']}°C")
+                    if info['tout'] is not None:
+                        display_parts.append(f"Tout:{info['tout']}°C")
+                    if info['CP'] is not None:
+                        display_parts.append(f"CP:{info['CP']:.2f}")
+                    if info['Q'] is not None:
+                        display_parts.append(f"Q:{info['Q']:.2f} kW")
+                    
+                    if info['type']:
+                        type_color = "🔴" if info['type'] == "HOT" else "🔵"
+                        display_parts.append(f"{type_color} {info['type']}")
+                    
+                    if display_parts:
+                        stream_cols_inner[2].caption(' | '.join(display_parts))
+                    else:
+                        stream_cols_inner[2].caption("(incomplete data)")
+    
+    # Right column: Display map with process circles
+    with map_col:
+        st.markdown("**🗺️ Process Overview Map**")
+        if st.session_state.get('map_snapshots'):
+            map_img = generate_process_level_map()
+            if map_img:
+                st.image(map_img, use_container_width=True)
+        else:
+            st.info("Map not available. Lock a map in Data Collection first.")
     
     # Count selected streams
     selected_count = sum(1 for k, v in st.session_state['selected_items'].items() 
