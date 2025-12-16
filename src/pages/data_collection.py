@@ -2233,7 +2233,7 @@ div.leaflet-container {background: #f2f2f3 !important;}
                                     # Calculate Q for each stream and draw circles above the box
                                     circle_y = y0 - 20  # Position circles closer to the box
                                     circle_spacing = 32  # Horizontal spacing between circles
-                                    base_radius = 15  # Base radius for circles (larger)
+                                    base_radius = 10  # Base radius for circles (larger)
                                     
                                     # Calculate total width needed for all circles
                                     total_width = len(all_streams) * circle_spacing
@@ -2246,15 +2246,24 @@ div.leaflet-container {background: #f2f2f3 !important;}
                                         tout = sv.get('Tout', '') or stream.get('temp_out', '')
                                         mdot = sv.get('ṁ', '') or stream.get('mdot', '')
                                         cp_val = sv.get('cp', '') or stream.get('cp', '')
+                                        CP_val = sv.get('CP', '') or stream.get('CP', '')
                                         
                                         Q = 0
                                         try:
-                                            if tin and tout and mdot and cp_val:
+                                            if tin and tout:
                                                 tin_f = float(tin)
                                                 tout_f = float(tout)
-                                                mdot_f = float(mdot)
-                                                cp_f = float(cp_val)
-                                                Q = mdot_f * cp_f * abs(tout_f - tin_f)
+                                                delta_T = abs(tout_f - tin_f)
+                                                
+                                                # Try CP first (simpler calculation)
+                                                if CP_val:
+                                                    CP_f = float(CP_val)
+                                                    Q = CP_f * delta_T
+                                                # Fallback to mdot * cp
+                                                elif mdot and cp_val:
+                                                    mdot_f = float(mdot)
+                                                    cp_f = float(cp_val)
+                                                    Q = mdot_f * cp_f * delta_T
                                         except (ValueError, TypeError):
                                             Q = 0
                                         
@@ -2302,6 +2311,7 @@ div.leaflet-container {background: #f2f2f3 !important;}
                                             'tout': tout,
                                             'mdot': mdot,
                                             'cp': cp_val,
+                                            'CP': CP_val,
                                             'Q': f"{Q:.2f}" if Q > 0 else "N/A",
                                             'process': st.session_state['proc_group_names'][group_idx] if group_idx < len(st.session_state.get('proc_group_names', [])) else 'Unknown'
                                         })
@@ -2731,15 +2741,24 @@ div.leaflet-container {background: #f2f2f3 !important;}
                                 tout = sv.get('Tout', '') or stream.get('temp_out', '')
                                 mdot = sv.get('ṁ', '') or stream.get('mdot', '')
                                 cp_val = sv.get('cp', '') or stream.get('cp', '')
+                                CP_val = sv.get('CP', '') or stream.get('CP', '')
                                 
                                 Q = 0
                                 try:
-                                    if tin and tout and mdot and cp_val:
+                                    if tin and tout:
                                         tin_f = float(tin)
                                         tout_f = float(tout)
-                                        mdot_f = float(mdot)
-                                        cp_f = float(cp_val)
-                                        Q = mdot_f * cp_f * abs(tout_f - tin_f)
+                                        delta_T = abs(tout_f - tin_f)
+                                        
+                                        # Try CP first (simpler calculation)
+                                        if CP_val:
+                                            CP_f = float(CP_val)
+                                            Q = CP_f * delta_T
+                                        # Fallback to mdot * cp
+                                        elif mdot and cp_val:
+                                            mdot_f = float(mdot)
+                                            cp_f = float(cp_val)
+                                            Q = mdot_f * cp_f * delta_T
                                 except (ValueError, TypeError):
                                     Q = 0
                                 
@@ -2791,6 +2810,7 @@ div.leaflet-container {background: #f2f2f3 !important;}
                                     'tout': tout,
                                     'mdot': mdot,
                                     'cp': cp_val,
+                                    'CP': CP_val,
                                     'Q': f"{Q:.2f}" if Q > 0 else "N/A",
                                     'subprocess': subprocess.get('name', f'Subprocess {subprocess_idx + 1}'),
                                     'process': parent_process
@@ -3322,8 +3342,12 @@ div.leaflet-container {background: #f2f2f3 !important;}
                         with info_cols[1]:
                             st.write(f"**Tin:** {clicked_stream['tin']} °C")
                             st.write(f"**Tout:** {clicked_stream['tout']} °C")
-                            st.write(f"**ṁ:** {clicked_stream['mdot']}")
-                            st.write(f"**cp:** {clicked_stream['cp']}")
+                            if clicked_stream.get('CP'):
+                                st.write(f"**CP:** {clicked_stream['CP']} kW/K")
+                            if clicked_stream.get('mdot'):
+                                st.write(f"**ṁ:** {clicked_stream['mdot']}")
+                            if clicked_stream.get('cp'):
+                                st.write(f"**cp:** {clicked_stream['cp']}")
                         st.success(f"**Heat Power (Q): {clicked_stream['Q']} kW**")
                 
                 if st.session_state['placement_mode'] and coords is not None and st.session_state.get('placing_process_idx') is not None:
