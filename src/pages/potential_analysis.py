@@ -1490,7 +1490,7 @@ def generate_report():
                         </div>
                         <div class="map-display-section">
                             <h4>Process Overview</h4>
-                            {"<img src='data:image/png;base64," + process_map_streams_b64 + "' alt='Process Map with Streams'>" if process_map_streams_b64 else "<p>Map not available</p>"}
+                            {"<img src='data:image/png;base64," + process_map_streams_b64 + "' alt='Process Map with Streams' style='width: 80%; height: auto;'>" if process_map_streams_b64 else "<p>Map not available</p>"}
                         </div>
                     </div>
                     
