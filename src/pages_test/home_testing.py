@@ -37,7 +37,20 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-
+# Display the logo
+st.image("../data/symbol.svg", width=200)
 # Home page content
 st.title("Home page")
 
+
+st.subheader("Information")
+
+# Display a clickable image from the HeatTransPlan website
+with open("../data/image_project.jpeg", "rb") as f:
+    image_data = f.read()
+encoded_image = base64.b64encode(image_data).decode()
+st.markdown(f'<a href="https://www.heattransplan.de/" target="_blank"><img src="data:image/jpeg;base64,{encoded_image}" width="400" style="transition: transform 0.3s ease; border: none;" onmouseover="this.style.transform=\'scale(1.1)\'" onmouseout="this.style.transform=\'scale(1)\'"></a>', unsafe_allow_html=True)
+st.markdown("About HeatTransPlan")
+
+st.subheader("Navigate to Pages")
+st.page_link("pages/data_collection.py", label="📊 Energy Data Collection", help="Collect and manage energy data")
