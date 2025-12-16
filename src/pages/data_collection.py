@@ -4,6 +4,7 @@ from streamlit_folium import st_folium
 import folium
 from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
+from graphics_utils import draw_smooth_ellipse
 from staticmap import StaticMap, CircleMarker
 from streamlit_image_coordinates import streamlit_image_coordinates
 from math import radians, cos, sin, sqrt, atan2
@@ -2314,11 +2315,12 @@ div.leaflet-container {background: #f2f2f3 !important;}
                                         
                                         # Draw circle
                                         circle_x = start_x + stream_idx * circle_spacing
-                                        draw.ellipse(
+                                        base_img = draw_smooth_ellipse(
+                                            base_img,
                                             [circle_x - radius, circle_y - radius, circle_x + radius, circle_y + radius],
                                             fill=circle_color,
                                             outline=(50, 50, 50, 255),
-                                            width=1
+                                            width=1,
                                         )
                                         
                                         # Store circle info for click detection
@@ -2821,13 +2823,14 @@ div.leaflet-container {background: #f2f2f3 !important;}
                                 except (ValueError, TypeError):
                                     circle_color = (150, 150, 150, 200)  # Grey for invalid data
                                 
-                                # Draw circle
+                                # Draw circle (smooth)
                                 circle_x = start_x + stream_idx * circle_spacing
-                                draw.ellipse(
+                                base_img = draw_smooth_ellipse(
+                                    base_img,
                                     [circle_x - radius, circle_y - radius, circle_x + radius, circle_y + radius],
                                     fill=circle_color,
                                     outline=(50, 50, 50, 255),
-                                    width=1
+                                    width=1,
                                 )
                                 
                                 # Store circle info for click detection

@@ -7,6 +7,7 @@ import tempfile
 import csv
 from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
+from graphics_utils import draw_smooth_ellipse
 import math
 
 # Add the pinch_tool directory to the path for imports
@@ -313,7 +314,7 @@ def generate_stream_kw_minimap(processes, map_snapshot, map_center, map_zoom, ma
                     x1 = int(px + radius)
                     y1 = int(py + radius)
                     
-                    draw.ellipse([x0, y0, x1, y1], fill=fill_color, outline=border_color, width=2)
+                    base_img = draw_smooth_ellipse(base_img, [x0, y0, x1, y1], fill=fill_color, outline=border_color, width=2)
                     
                     # Draw kW label inside circle
                     if kw > 0:
@@ -366,13 +367,13 @@ def generate_stream_kw_minimap(processes, map_snapshot, map_center, map_zoom, ma
         draw.text((legend_x + 5, legend_y + 3), "kW", fill=(0, 0, 0, 255), font=font)
         
         # Hot indicator
-        draw.ellipse([legend_x + 5, legend_y + 20, legend_x + 17, legend_y + 32], 
-                     fill=(255, 80, 80, 220), outline=(180, 30, 30, 255), width=1)
+        base_img = draw_smooth_ellipse(base_img, [legend_x + 5, legend_y + 20, legend_x + 17, legend_y + 32], 
+                           fill=(255, 80, 80, 220), outline=(180, 30, 30, 255), width=1)
         draw.text((legend_x + 22, legend_y + 21), "Hot", fill=(0, 0, 0, 255), font=font_small)
         
         # Cold indicator
-        draw.ellipse([legend_x + 5, legend_y + 37, legend_x + 17, legend_y + 49], 
-                     fill=(80, 140, 255, 220), outline=(30, 80, 180, 255), width=1)
+        base_img = draw_smooth_ellipse(base_img, [legend_x + 5, legend_y + 37, legend_x + 17, legend_y + 49], 
+                           fill=(80, 140, 255, 220), outline=(30, 80, 180, 255), width=1)
         draw.text((legend_x + 22, legend_y + 38), "Cold", fill=(0, 0, 0, 255), font=font_small)
         
         return base_img

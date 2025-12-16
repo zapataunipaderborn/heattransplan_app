@@ -7,6 +7,7 @@ import tempfile
 import csv
 from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
+from graphics_utils import draw_smooth_ellipse
 from datetime import datetime
 
 # Add the pinch_tool directory to the path for imports
@@ -244,11 +245,12 @@ def generate_process_level_map():
                                 circle_color = (150, 150, 150, 200)
                             
                             circle_x = start_x + stream_idx * circle_spacing
-                            draw.ellipse(
+                            base_img = draw_smooth_ellipse(
+                                base_img,
                                 [circle_x - radius, circle_y - radius, circle_x + radius, circle_y + radius],
                                 fill=circle_color,
                                 outline=(50, 50, 50, 255),
-                                width=1
+                                width=1,
                             )
                     
                 except (ValueError, TypeError):
