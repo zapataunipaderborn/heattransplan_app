@@ -1074,7 +1074,7 @@ def generate_report():
                 
                 stream_type = None
                 if tin is not None and tout is not None:
-                    stream_type = "Hot stream (Heat source)" if tin > tout else "Cold stream (Heat sink)"
+                    stream_type = "Hot stream (Heat Source)" if tin > tout else "Cold stream (Heat sink)"
                 
                 CP_flow = CP_direct if CP_direct is not None else (mdot * cp_val if mdot and cp_val else None)
                 Q = abs(CP_flow * (tout - tin)) if CP_flow and tin is not None and tout is not None else None
@@ -1124,7 +1124,7 @@ def generate_report():
                                 
                                 # Show Q if available
                                 q_display = f"{info['Q']:.2f} kW" if info['Q'] is not None else "N/A"
-                                type_display = "Hot stream (Heat Source)" if info['type'] == "Hot stream (Heat source)" else ("Cold Stream (Heat Sink)" if info['type'] == "Cold stream (Heat sink)" else (info['type'] if info['type'] else "N/A"))
+                                type_display = "Hot stream (Heat Source)" if info['type'] == "Hot stream (Heat Source)" else ("Cold stream (Heat sink)" if info['type'] == "Cold stream (Heat sink)" else (info['type'] if info['type'] else "N/A"))
                                 
                                 stream_list_html += f"""
                                 <div class="stream-item {selected_class}">
@@ -1156,7 +1156,7 @@ def generate_report():
                     <tbody>
                 """
                 for s in streams_data:
-                    type_badge = f'<span class="badge hot">Hot stream (Heat Source)</span>' if s['type'] == 'HOT' else f'<span class="badge cold">Cold Stream (Heat Sink)</span>'
+                    type_badge = f'<span class="badge hot">Hot stream (Heat Source)</span>' if s['type'] == 'Hot stream (Heat Source)' else f'<span class="badge cold">Cold Stream (Heat Sink)</span>'
                     streams_table_html += f"""
                         <tr>
                             <td>{s['name']}</td>
@@ -2143,7 +2143,7 @@ else:
         stream_type = None
         if tin is not None and tout is not None:
             if tin > tout:
-                stream_type = "Hot stream (Heat source)"
+                stream_type = "Hot stream (Heat Source)"
             else:
                 stream_type = "Cold stream (Heat sink)"
         
@@ -2212,7 +2212,7 @@ else:
                         display_parts.append(f"Q:{info['Q']:.2f} kW")
                     
                     if info['type']:
-                        type_color = "🔴" if info['type'] == "Hot stream (Heat source)" else "🔵"
+                        type_color = "🔴" if info['type'] == "Hot stream (Heat Source)" else "🔵"
                         display_parts.append(f"{type_color} {info['type']}")
                     
                     if display_parts:
@@ -2222,7 +2222,7 @@ else:
     
     # Right column: Display map with process circles
     with map_col:
-        st.markdown("**🗺️ Process Overview Map**")
+        st.markdown("**🗺️ Georeferencing**")
         if st.session_state.get('map_snapshots'):
             map_img = generate_process_level_map()
             if map_img:
@@ -2505,7 +2505,7 @@ else:
                             actual_t = t
                         matching = [s['name'] for s in hot_streams if min(s['Tin'], s['Tout']) <= actual_t <= max(s['Tin'], s['Tout'])]
                         stream_info = '<br>'.join(matching) if matching else 'Composite'
-                        label = f"<b>Hot stream (Heat Source) {curve_label}</b>" if curve_label else "<b>Hot streams (Heat sources) Composite</b>"
+                        label = f"<b>Hot stream (Heat Source) {curve_label}</b>" if curve_label else "<b>Hot stream (Heat Source) Composite</b>"
                         hot_hover.append(f"{label}<br>T: {t:.1f}°C<br>H: {h:.1f} kW<br>Streams: {stream_info}")
                     
                     fig1.add_trace(go.Scatter(
